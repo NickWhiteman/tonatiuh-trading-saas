@@ -15,6 +15,8 @@
     "start:dev": "npx nodemon",
     "start": "npm run build && node build/index.js",
     "start:ts-node": "npx ts-node src/index.ts",
+    "db:migrate": "node build/saas/migrate.js",
+    "db:migrate:dev": "npx ts-node src/saas/migrate.ts",
     "test": "npm run build && mocha \"test/**/*.test.js\"",
     "lint": "npm eslint ./src",
     "lint:fix": "npm eslint ./src --fix"

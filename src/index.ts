@@ -14,6 +14,7 @@ import { GetDatabaseList } from './plugins/FileSystemUtils/GetFileSystem/GetData
 import { tradingWorkerManager } from './process/TradingWorkerManager';
 import { localApiSecurity, localCorsOrigin } from './middleware/local-api-security';
 import { parsePositiveId, sendError } from './router/router.utils';
+import { errorHandler, requestContext } from './saas/http/middleware';
 
 function autoStarterTrading({
   configs,
@@ -56,6 +57,7 @@ async function main() {
 
   app.use(cors({ origin: localCorsOrigin, allowedHeaders: ['Content-Type', 'Authorization'] }));
   app.use(bodyParser.json({ limit: '1mb' }));
+  app.use(requestContext);
   app.use(localApiSecurity);
   app.use(prefix.config, configRouter);
   app.use(prefix.session, tradeSessionRouter);
@@ -87,6 +89,8 @@ async function main() {
       sendError(res, error);
     }
   });
+
+  app.use(errorHandler);
 
   autoStarterTrading({
     configs,
