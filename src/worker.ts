@@ -3,14 +3,15 @@ import { ConfigType } from './repository/types/types';
 // import { TradingScalperService } from './trading-service/TradingScalperService/TradingScalperService';
 
 const trading = new TradingVectorProfitService();
-const config: ConfigType = JSON.parse(process.argv[2]);
+let config: ConfigType | undefined;
 
-async function worker() {
+async function worker(nextConfig: ConfigType) {
   try {
-    process.send?.({ type: 'started', configId: config.id, symbol: config.symbol });
-    await trading.startAlgorithms(config);
+    config = nextConfig;
+    process.send?.({ type: 'started', configId: nextConfig.id, symbol: nextConfig.symbol });
+    await trading.startAlgorithms(nextConfig);
   } catch (err) {
-    process.send?.({ type: 'error', configId: config.id, message: String(err) });
+    process.send?.({ type: 'error', configId: nextConfig.id, message: String(err) });
     process.exitCode = 1;
   }
 }
@@ -28,10 +29,12 @@ async function stopWorker() {
   }
 }
 
-process.on('message', (message: { type?: string }) => {
+process.on('message', (message: { type?: string; config?: ConfigType }) => {
   if (message?.type === 'stop') void stopWorker();
+  if (message?.type === 'start' && message.config && !config) void worker(message.config);
 });
 process.once('SIGTERM', () => void stopWorker());
 process.once('SIGINT', () => void stopWorker());
+process.once('disconnect', () => void stopWorker());
 
-void worker();
+if (process.argv[2]) void worker(JSON.parse(process.argv[2]) as ConfigType);

@@ -20,6 +20,8 @@
     "start:ts-node": "npx ts-node src/index.ts",
     "db:migrate": "node build/saas/migrate.js",
     "db:migrate:dev": "npx ts-node src/saas/migrate.ts",
+    "worker:saas": "node build/saas/worker.js",
+    "worker:saas:dev": "npx ts-node src/saas/worker.ts",
     "test": "npm run build && node --test test/*.test.js",
     "lint": "npm eslint ./src",
     "lint:fix": "npm eslint ./src --fix"
