@@ -10,7 +10,7 @@ import { getSaasPool, saasQuery, saasTransaction } from './db/pool';
 
 type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' };
 type BotRow = {
-  id: string; exchange_code: string; credentials_ciphertext: string; configuration: Record<string, unknown>;
+  id: string; exchange_code: string; credentials_ciphertext: string; configuration: Record<string, unknown>; sandbox: boolean;
 };
 
 const instanceId = randomUUID();
@@ -54,7 +54,7 @@ function legacyConfig(bot: BotRow): ConfigType {
 
 async function loadBot(botId: string): Promise<BotRow> {
   const result = await saasQuery<BotRow>(
-    `SELECT b.id,b.configuration,e.exchange_code,e.credentials_ciphertext FROM trading_bots b
+    `SELECT b.id,b.configuration,e.exchange_code,e.credentials_ciphertext,e.sandbox FROM trading_bots b
      JOIN exchange_connections e ON e.id=b.exchange_connection_id WHERE b.id=$1 AND e.enabled=true`, [botId],
   );
   if (!result.rows[0]) throw new Error('Bot or enabled exchange connection was not found.');
@@ -63,14 +63,15 @@ async function loadBot(botId: string): Promise<BotRow> {
 
 async function startBot(botId: string): Promise<void> {
   if (processes.get(botId)?.exitCode === null) return;
-  const config = legacyConfig(await loadBot(botId));
+  const bot = await loadBot(botId);
+  const config = legacyConfig(bot);
   const botDataDir = path.join(dataRoot, botId);
   await mkdir(botDataDir, { recursive: true, mode: 0o700 });
   await writeFile(path.join(botDataDir, 'database.list.json'), JSON.stringify({ 1: 'trading.sqlite' }), { mode: 0o600 });
   const entry = path.join(__dirname, '..', 'worker.js');
   const childEnvironment: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
-    APP_MODE: 'desktop', TONATIUH_DATA_DIR: botDataDir, PORT: process.env.PORT ?? '3131',
+    APP_MODE: 'desktop', ENV_RELEASE: bot.sandbox ? 'dev' : 'prod', TONATIUH_DATA_DIR: botDataDir, PORT: process.env.PORT ?? '3131',
   };
   const child = fork(entry, [], {
     env: childEnvironment,

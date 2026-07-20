@@ -29,3 +29,18 @@ export function booleanValue(value: unknown, field: string): boolean {
   if (typeof value !== 'boolean') throw validationError(`${field} must be a boolean.`);
   return value;
 }
+
+export function numberValue(value: unknown, field: string, minimum: number, maximum: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) {
+    throw validationError(`${field} must be a number between ${minimum} and ${maximum}.`);
+  }
+  return value;
+}
+
+export function uuidValue(value: unknown, field: string): string {
+  const result = stringValue(value, field, 36);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(result)) {
+    throw validationError(`${field} must be a UUID.`);
+  }
+  return result;
+}

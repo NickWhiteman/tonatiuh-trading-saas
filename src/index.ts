@@ -17,6 +17,8 @@ import { parsePositiveId, sendError } from './router/router.utils';
 import { errorHandler, requestContext } from './saas/http/middleware';
 import { authRouter } from './saas/auth/router';
 import { billingRouter } from './saas/billing/router';
+import { exchangesRouter } from './saas/trading/exchanges.router';
+import { botsRouter } from './saas/trading/bots.router';
 
 function autoStarterTrading({
   configs,
@@ -62,6 +64,8 @@ async function main() {
   app.use(requestContext);
   app.use('/api/auth', authRouter);
   app.use('/api/billing', billingRouter);
+  app.use('/api/exchanges', exchangesRouter);
+  app.use('/api/bots', botsRouter);
   app.use(localApiSecurity);
   app.use(prefix.config, configRouter);
   app.use(prefix.session, tradeSessionRouter);
