@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "lib": ["esnext"],
+    // "allowJs": true,
+    "esModuleInterop": true,
+    "noImplicitAny": false,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "outDir": "./build",
+    "rootDir": "./src",
+    "baseUrl": "src",
+    "paths": {
+      "utils/*": ["utils/*"],
+      "interface/*": ["interface/*"],
+      "repository/*": ["repository/*"],
+      "logger/*": ["logger/*"],
+      "types/*": ["types/*"],
+      "router/*": ["router/*"],
+      "trading-service/*": ["trading-service/*"]
+    },
+    "moduleResolution": "NodeNext",
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "strictPropertyInitialization": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "**/*.test.ts"],
+  // ts-node configuration turns on mode. Turns off esm mode = true
+  "ts-node": {
+    "esm": false
+  }
+}

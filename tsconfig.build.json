@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "test", "**/*.test.ts", "build"],
+  "compilerOptions": {
+    "outDir": "./build",
+    "module": "commonjs",
+    "declaration": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
