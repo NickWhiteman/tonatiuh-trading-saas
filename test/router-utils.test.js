@@ -1,4 +1,5 @@
 const { expect } = require('chai');
+const { describe, it } = require('node:test');
 const { HttpError, parsePositiveId, validateConfigPayload } = require('../build/router/router.utils');
 
 describe('router request validation', () => {

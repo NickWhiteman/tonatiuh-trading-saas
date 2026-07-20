@@ -1,4 +1,5 @@
 const { expect } = require('chai');
+const { describe, it } = require('node:test');
 const { objectValue, stringValue, booleanValue } = require('../build/saas/http/validate');
 
 describe('SaaS request validation', () => {
