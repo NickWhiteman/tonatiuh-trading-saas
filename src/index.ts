@@ -16,6 +16,7 @@ import { localApiSecurity, localCorsOrigin } from './middleware/local-api-securi
 import { parsePositiveId, sendError } from './router/router.utils';
 import { errorHandler, requestContext } from './saas/http/middleware';
 import { authRouter } from './saas/auth/router';
+import { billingRouter } from './saas/billing/router';
 
 function autoStarterTrading({
   configs,
@@ -60,6 +61,7 @@ async function main() {
   app.use(bodyParser.json({ limit: '1mb' }));
   app.use(requestContext);
   app.use('/api/auth', authRouter);
+  app.use('/api/billing', billingRouter);
   app.use(localApiSecurity);
   app.use(prefix.config, configRouter);
   app.use(prefix.session, tradeSessionRouter);

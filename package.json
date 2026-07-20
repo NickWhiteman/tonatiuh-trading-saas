@@ -22,6 +22,8 @@
     "db:migrate:dev": "npx ts-node src/saas/migrate.ts",
     "worker:saas": "node build/saas/worker.js",
     "worker:saas:dev": "npx ts-node src/saas/worker.ts",
+    "worker:billing": "node build/saas/billing/renewals.js",
+    "worker:billing:dev": "npx ts-node src/saas/billing/renewals.ts",
     "test": "npm run build && node --test test/*.test.js",
     "lint": "npm eslint ./src",
     "lint:fix": "npm eslint ./src --fix"
