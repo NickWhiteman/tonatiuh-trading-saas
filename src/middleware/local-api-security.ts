@@ -31,5 +31,11 @@ export function localCorsOrigin(origin: string | undefined, callback: (error: Er
     return;
   }
 
+  const allowed=(process.env.CORS_ORIGINS??'').split(',').map(value=>value.trim()).filter(Boolean);
+  if (ENV.APP_MODE === 'web' && allowed.includes(origin)) {
+    callback(null, true);
+    return;
+  }
+
   callback(new Error(`Origin ${origin} is not allowed.`));
 }

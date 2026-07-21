@@ -1,6 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
+import helmet from 'helmet';
 
 import configRouter from './router/config.router';
 import tradeSessionRouter from './router/trade-session.router';
@@ -50,6 +51,9 @@ async function main() {
   const databaseList = databaseListManager.getDatabaseList();
   const configs = await configService.getConfig();
   const port = ENV.PORT;
+  const trustProxy=process.env.TRUST_PROXY;
+  if(trustProxy)app.set('trust proxy',/^\d+$/.test(trustProxy)?Number(trustProxy):trustProxy);
+  app.disable('x-powered-by');
 
   const prefix = {
     config: '/config',
@@ -59,7 +63,8 @@ async function main() {
     identity: '/identity',
   };
 
-  app.use(cors({ origin: localCorsOrigin, allowedHeaders: ['Content-Type', 'Authorization'] }));
+  app.use(helmet());
+  app.use(cors({ origin: localCorsOrigin, allowedHeaders: ['Content-Type', 'Authorization','Idempotency-Key','X-Request-Id'] }));
   app.use(bodyParser.json({ limit: '1mb' }));
   app.use(requestContext);
   app.use('/api/auth', authRouter);

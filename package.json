@@ -24,6 +24,8 @@
     "worker:saas:dev": "npx ts-node src/saas/worker.ts",
     "worker:billing": "node build/saas/billing/renewals.js",
     "worker:billing:dev": "npx ts-node src/saas/billing/renewals.ts",
+    "worker:email": "node build/saas/email/worker.js",
+    "worker:email:dev": "npx ts-node src/saas/email/worker.ts",
     "test": "npm run build && node --test test/*.test.js",
     "lint": "npm eslint ./src",
     "lint:fix": "npm eslint ./src --fix"
@@ -33,6 +35,7 @@
     "@types/express": "^4.17.25",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^18.19.130",
+    "@types/nodemailer": "^7.0.12",
     "@types/pg": "^8.20.0",
     "@types/request": "^2.48.8",
     "@typescript-eslint/eslint-plugin": "^5.45.1",
@@ -61,7 +64,9 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.18.1",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "socket.io": "^4.8.3",
     "sqlite3": "^6.0.1"
