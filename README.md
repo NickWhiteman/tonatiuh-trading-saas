@@ -95,3 +95,5 @@ Production Compose accepts application and backup-tool images pinned by digest.
 Run the fail-closed `npm run release:check` before rollout and the read-only
 `npm run release:smoke` after it. Required evidence, go/no-go conditions and
 rollback criteria are documented in `docs/production-launch-checklist.md`.
+The isolated staging host and manual deployment workflow are documented in
+`docs/staging-deployment.md`.

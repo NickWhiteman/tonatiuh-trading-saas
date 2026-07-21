@@ -1,7 +1,7 @@
 x-runtime: &runtime
   image: ${IMAGE_REFERENCE:?IMAGE_REFERENCE with an immutable digest is required}
   env_file:
-    - path: .env.production
+    - path: ${APP_ENV_FILE:-.env.production}
       required: false
   init: true
   read_only: true

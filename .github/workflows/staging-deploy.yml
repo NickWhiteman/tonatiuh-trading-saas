@@ -1,0 +1,60 @@
+name: Deploy staging
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit: {description: Full commit SHA from main, required: true, type: string}
+      image_reference: {description: Application repository@sha256 digest, required: true, type: string}
+      previous_image_reference: {description: Previous healthy repository@sha256 digest, required: true, type: string}
+      postgres_tools_reference: {description: Backup tools repository@sha256 digest, required: true, type: string}
+      smoke_base_url: {description: Staging HTTPS origin, required: true, type: string}
+permissions: {contents: read,packages: read}
+concurrency: {group: staging-deployment,cancel-in-progress: false}
+jobs:
+  deploy:
+    runs-on: [self-hosted,linux,staging]
+    environment: staging
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with: {ref: "${{ inputs.release_commit }}",fetch-depth: 0}
+      - name: Validate immutable deployment inputs
+        env:
+          EXPECTED_SHA: "${{ inputs.release_commit }}"
+          IMAGE_REFERENCE: "${{ inputs.image_reference }}"
+          PREVIOUS_IMAGE_REFERENCE: "${{ inputs.previous_image_reference }}"
+          POSTGRES_TOOLS_REFERENCE: "${{ inputs.postgres_tools_reference }}"
+          SMOKE_BASE_URL: "${{ inputs.smoke_base_url }}"
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
+          node scripts/validate-deployment-inputs.js "$IMAGE_REFERENCE" "$POSTGRES_TOOLS_REFERENCE" "$SMOKE_BASE_URL"
+          node scripts/validate-deployment-inputs.js "$PREVIOUS_IMAGE_REFERENCE" "$POSTGRES_TOOLS_REFERENCE" "$SMOKE_BASE_URL"
+          test "$IMAGE_REFERENCE" != "$PREVIOUS_IMAGE_REFERENCE"
+      - name: Materialize non-secret staging configuration
+        env:
+          STAGING_ENV_FILE: "${{ vars.STAGING_ENV_FILE }}"
+          IMAGE_REFERENCE: "${{ inputs.image_reference }}"
+          POSTGRES_TOOLS_REFERENCE: "${{ inputs.postgres_tools_reference }}"
+        run: |
+          umask 077
+          printf '%s\n' "$STAGING_ENV_FILE" > .env.staging
+          printf 'IMAGE_REFERENCE=%s\nPOSTGRES_TOOLS_REFERENCE=%s\n' "$IMAGE_REFERENCE" "$POSTGRES_TOOLS_REFERENCE" >> .env.staging
+      - name: Validate topology and migrate
+        run: |
+          docker compose --env-file .env.staging -f compose.production.yaml config --quiet
+          docker compose --env-file .env.staging -f compose.production.yaml pull
+          docker compose --env-file .env.staging -f compose.production.yaml run --rm migrate
+      - name: Roll out staging
+        run: docker compose --env-file .env.staging -f compose.production.yaml up -d api trading-worker billing-worker email-worker retention-worker proxy
+      - name: Read-only smoke test
+        env: {SMOKE_BASE_URL: "${{ inputs.smoke_base_url }}"}
+        run: npm run release:smoke
+      - name: Roll back application on failed rollout
+        if: failure()
+        env: {PREVIOUS_IMAGE_REFERENCE: "${{ inputs.previous_image_reference }}"}
+        run: |
+          printf 'IMAGE_REFERENCE=%s\n' "$PREVIOUS_IMAGE_REFERENCE" >> .env.staging
+          docker compose --env-file .env.staging -f compose.production.yaml up -d api trading-worker billing-worker email-worker retention-worker proxy
+      - name: Remove generated configuration
+        if: always()
+        run: rm -f .env.staging
