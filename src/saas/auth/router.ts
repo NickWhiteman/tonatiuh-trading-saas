@@ -20,16 +20,16 @@ function emailValue(value: unknown): string {
   return email;
 }
 
-function tokens(userId: string, organizationId: string, role: AccessPayload['role']) {
+export function tokens(userId: string, organizationId: string, role: AccessPayload['role']) {
   const refreshToken = createRefreshToken();
   return { accessToken: createAccessToken({ sub: userId, org: organizationId, role }), refreshToken, expiresIn: getSaasConfig().accessTokenTtlSeconds };
 }
 
-async function saveRefresh(userId: string, token: string, familyId = randomUUID()): Promise<void> {
+export async function saveRefresh(userId: string, organizationId:string, token: string, familyId = randomUUID()): Promise<void> {
   await saasQuery(
-    `INSERT INTO refresh_tokens(user_id, family_id, token_hash, expires_at)
-     VALUES ($1, $2, $3, now() + make_interval(secs => $4))`,
-    [userId, familyId, hashRefreshToken(token), getSaasConfig().refreshTokenTtlSeconds],
+    `INSERT INTO refresh_tokens(user_id,organization_id,family_id,token_hash,expires_at)
+     VALUES ($1,$2,$3,$4,now()+make_interval(secs => $5))`,
+    [userId,organizationId,familyId,hashRefreshToken(token),getSaasConfig().refreshTokenTtlSeconds],
   );
 }
 
@@ -77,7 +77,7 @@ authRouter.post('/login',databaseRateLimit('login',10,900), async (req, res, nex
     }
     if(account.status==='PENDING')throw new SaasHttpError(403,'EMAIL_NOT_VERIFIED','Email verification is required.');
     const session = tokens(account.id, account.organization_id, account.role);
-    await saveRefresh(account.id, session.refreshToken);
+    await saveRefresh(account.id,account.organization_id,session.refreshToken);
     res.json({ user: { id: account.id, email: account.email, displayName: account.display_name }, organization: { id: account.organization_id, name: account.organization_name }, ...session });
   } catch (error) { next(error); }
 });
@@ -121,8 +121,8 @@ authRouter.post('/refresh', async (req, res, next) => {
     const body = objectValue(req.body, ['refreshToken']);
     const oldToken = stringValue(body.refreshToken, 'refreshToken', 500);
     const rotation = await saasTransaction(async (client) => {
-      const result = await client.query<{ id: string; user_id: string; family_id: string; revoked_at: Date | null; expires_at: Date }>(
-        'SELECT id, user_id, family_id, revoked_at, expires_at FROM refresh_tokens WHERE token_hash=$1 FOR UPDATE', [hashRefreshToken(oldToken)],
+      const result = await client.query<{ id: string; user_id: string; organization_id:string; family_id: string; revoked_at: Date | null; expires_at: Date }>(
+        'SELECT id,user_id,organization_id,family_id,revoked_at,expires_at FROM refresh_tokens WHERE token_hash=$1 FOR UPDATE', [hashRefreshToken(oldToken)],
       );
       const stored = result.rows[0];
       if (!stored) throw new SaasHttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid.');
@@ -132,16 +132,16 @@ authRouter.post('/refresh', async (req, res, next) => {
       }
       if (stored.expires_at <= new Date()) throw new SaasHttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is expired.');
       const membership = (await client.query<{ organization_id: string; role: AccessPayload['role'] }>(
-        `SELECT m.organization_id, m.role FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id
-         JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND o.status='ACTIVE' AND u.status='ACTIVE' ORDER BY m.created_at LIMIT 1`, [stored.user_id],
+        `SELECT m.organization_id,m.role FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id
+         JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.organization_id=$2 AND o.status='ACTIVE' AND u.status='ACTIVE'`, [stored.user_id,stored.organization_id],
       )).rows[0];
       if (!membership) throw new SaasHttpError(401, 'INVALID_REFRESH_TOKEN', 'Account access is unavailable.');
       const nextSession = tokens(stored.user_id, membership.organization_id, membership.role);
       const nextId = randomUUID();
       await client.query('UPDATE refresh_tokens SET revoked_at=now(), replaced_by=$2 WHERE id=$1', [stored.id, nextId]);
       await client.query(
-        `INSERT INTO refresh_tokens(id,user_id,family_id,token_hash,expires_at) VALUES($1,$2,$3,$4,now()+make_interval(secs => $5))`,
-        [nextId, stored.user_id, stored.family_id, hashRefreshToken(nextSession.refreshToken), getSaasConfig().refreshTokenTtlSeconds],
+        `INSERT INTO refresh_tokens(id,user_id,organization_id,family_id,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,now()+make_interval(secs => $6))`,
+        [nextId,stored.user_id,stored.organization_id,stored.family_id,hashRefreshToken(nextSession.refreshToken),getSaasConfig().refreshTokenTtlSeconds],
       );
       return { reused: false as const, session: nextSession };
     });

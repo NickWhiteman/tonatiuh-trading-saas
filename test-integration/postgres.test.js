@@ -18,13 +18,14 @@ describe('PostgreSQL migrations', () => {
     assert.deepEqual(migrations.rows.map(row => row.name), [
       '001_saas_foundation.sql', '002_secure_auth.sql', '003_worker_runtime.sql',
       '004_secure_billing.sql', '005_trading_api.sql', '006_account_security.sql',
+      '007_organization_members.sql',
     ]);
   });
 
   it('creates the critical SaaS tables', async () => {
     const result = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'
-      AND table_name=ANY($1::text[])`, [['users','organizations','trading_bots','subscriptions','account_tokens','request_rate_limits']]);
-    assert.equal(result.rowCount, 6);
+      AND table_name=ANY($1::text[])`, [['users','organizations','trading_bots','subscriptions','account_tokens','request_rate_limits','organization_invitations']]);
+    assert.equal(result.rowCount, 7);
   });
 });
 

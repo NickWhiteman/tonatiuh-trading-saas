@@ -12,6 +12,7 @@ tags:
   - {name: Billing}
   - {name: Exchanges}
   - {name: Bots}
+  - {name: Organizations}
   - {name: Health}
 paths:
   /api/auth/register:
@@ -112,6 +113,63 @@ paths:
       responses:
         '200': {description: Available plans}
         default: {$ref: '#/components/responses/Error'}
+
+  /api/organizations:
+    get:
+      tags: [Organizations]
+      operationId: listOrganizations
+      responses: {'200': {description: User workspaces and current organization}, default: {$ref: '#/components/responses/Error'}}
+  /api/organizations/switch:
+    post:
+      tags: [Organizations]
+      operationId: switchOrganization
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [organizationId], properties: {organizationId: {type: string, format: uuid}}}}}
+      responses: {'200': {$ref: '#/components/responses/Session'}, default: {$ref: '#/components/responses/Error'}}
+  /api/organizations/members:
+    get:
+      tags: [Organizations]
+      operationId: listOrganizationMembers
+      responses: {'200': {description: Current organization members}, default: {$ref: '#/components/responses/Error'}}
+  /api/organizations/members/{userId}:
+    patch:
+      tags: [Organizations]
+      operationId: updateMemberRole
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [role], properties: {role: {$ref: '#/components/schemas/AssignableRole'}}}}}
+      responses: {'200': {description: Member role updated}, default: {$ref: '#/components/responses/Error'}}
+    delete:
+      tags: [Organizations]
+      operationId: removeMember
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      responses: {'204': {description: Member removed and organization sessions revoked}, default: {$ref: '#/components/responses/Error'}}
+  /api/organizations/invitations:
+    get:
+      tags: [Organizations]
+      operationId: listInvitations
+      responses: {'200': {description: Last 100 invitations}, default: {$ref: '#/components/responses/Error'}}
+    post:
+      tags: [Organizations]
+      operationId: createInvitation
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [email, role], properties: {email: {type: string, format: email}, role: {$ref: '#/components/schemas/AssignableRole'}}}}}
+      responses: {'201': {description: Invitation queued for delivery}, default: {$ref: '#/components/responses/Error'}}
+  /api/organizations/invitations/accept:
+    post:
+      tags: [Organizations]
+      operationId: acceptInvitation
+      requestBody: {$ref: '#/components/requestBodies/AccountToken'}
+      responses: {'200': {description: Invitation accepted}, default: {$ref: '#/components/responses/Error'}}
+  /api/organizations/invitations/{id}:
+    delete:
+      tags: [Organizations]
+      operationId: revokeInvitation
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses: {'204': {description: Invitation revoked}, default: {$ref: '#/components/responses/Error'}}
   /api/billing/webhook:
     post:
       tags: [Billing]
@@ -280,6 +338,7 @@ components:
     metricsToken: {type: http, scheme: bearer, bearerFormat: opaque metrics token}
   parameters:
     ResourceId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    UserId: {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
   responses:
     Error:
@@ -329,6 +388,7 @@ components:
       type: object
       required: [accessToken, refreshToken, expiresIn]
       properties: {accessToken: {type: string, writeOnly: true}, refreshToken: {type: string, writeOnly: true}, expiresIn: {type: integer}}
+    AssignableRole: {type: string, enum: [ADMIN, TRADER, ANALYST, BILLING, VIEWER]}
     Register:
       type: object
       additionalProperties: false

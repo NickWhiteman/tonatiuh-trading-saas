@@ -11,6 +11,9 @@ const expected = {
   '/api/auth/reset-password':['post'], '/api/auth/me':['get'], '/api/billing/plans':['get'], '/api/billing/webhook':['post'],
   '/api/billing/subscription':['get'], '/api/billing/checkout':['post'], '/api/billing/cancel':['post'], '/api/billing/resume':['post'],
   '/api/exchanges':['get','post'], '/api/exchanges/{id}':['patch'], '/api/exchanges/{id}/verify':['post'],
+  '/api/organizations':['get'], '/api/organizations/switch':['post'], '/api/organizations/members':['get'],
+  '/api/organizations/members/{userId}':['delete','patch'], '/api/organizations/invitations':['get','post'],
+  '/api/organizations/invitations/accept':['post'], '/api/organizations/invitations/{id}':['delete'],
   '/api/bots':['get','post'], '/api/bots/{id}':['get','patch'], '/api/bots/{id}/start':['post'], '/api/bots/{id}/stop':['post'],
   '/api/bots/{id}/restart':['post'], '/api/bots/{id}/commands':['get'], '/api/bots/{id}/orders':['get'],
   '/health/live':['get'], '/health/ready':['get'], '/metrics':['get'],
@@ -34,6 +37,6 @@ describe('OpenAPI contract',()=>{
     for(const path of ['/api/billing/checkout','/api/bots/{id}/start','/api/bots/{id}/stop','/api/bots/{id}/restart']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const index=await readFile('src/index.ts','utf8');
-    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/health'","'/metrics'"])assert.ok(index.includes(mount),mount);
+    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/health'","'/metrics'"])assert.ok(index.includes(mount),mount);
     const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
 });

@@ -23,6 +23,7 @@ import { botsRouter } from './saas/trading/bots.router';
 import { healthRouter, runtimeHealth } from './saas/observability/health';
 import { metricsRouter, observeRequests } from './saas/observability/metrics';
 import { logger } from './saas/observability/logger';
+import { organizationsRouter } from './saas/organizations/router';
 
 function autoStarterTrading({
   configs,
@@ -77,6 +78,7 @@ async function main() {
   app.use('/api/billing', billingRouter);
   app.use('/api/exchanges', exchangesRouter);
   app.use('/api/bots', botsRouter);
+  app.use('/api/organizations',organizationsRouter);
   app.use(localApiSecurity);
   app.use(prefix.config, configRouter);
   app.use(prefix.session, tradeSessionRouter);
