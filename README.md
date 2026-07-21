@@ -4,6 +4,8 @@ Trading backend used by Tonatiuh desktop and SaaS deployments.
 
 Operational controls for deterministic staged releases and emergency kill
 switches are documented in [docs/feature-flags.md](docs/feature-flags.md).
+Backup, restore and regional recovery objectives are documented in
+[docs/disaster-recovery.md](docs/disaster-recovery.md).
 
 ## Development
 

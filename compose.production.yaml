@@ -88,6 +88,27 @@ services:
     depends_on:
       migrate: {condition: service_completed_successfully}
 
+  backup:
+    image: ${POSTGRES_TOOLS_IMAGE:?POSTGRES_TOOLS_IMAGE is required}:${POSTGRES_TOOLS_TAG:?POSTGRES_TOOLS_TAG is required}
+    profiles: [operations]
+    environment:
+      DATABASE_URL_FILE: /run/secrets/backup_database_url
+      AGE_RECIPIENT_FILE: /run/secrets/backup_age_recipient
+      BACKUP_DIR: /backups
+      BACKUP_METRICS_FILE: /metrics/backup.prom
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
+      BACKUP_PRUNE: ${BACKUP_PRUNE:-false}
+    secrets: [backup_database_url,backup_age_recipient]
+    volumes: [backup-data:/backups,backup-metrics:/metrics]
+    command: ["/usr/local/bin/backup.sh"]
+    init: true
+    read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,size=64m]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [backend,egress]
+    restart: "no"
+
   proxy:
     image: caddy:2.10.0-alpine
     environment: {DOMAIN: "${DOMAIN:?DOMAIN is required}",ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"}
@@ -109,6 +130,10 @@ volumes:
   bot-data:
   caddy-data:
   caddy-config:
+  backup-data:
+    external: true
+    name: ${BACKUP_VOLUME_NAME:?BACKUP_VOLUME_NAME is required}
+  backup-metrics:
 secrets:
   migration_database_url: {external: true}
   api_database_url: {external: true}
@@ -119,3 +144,5 @@ secrets:
   smtp_password: {external: true}
   metrics_token: {external: true}
   email_webhook_token: {external: true}
+  backup_database_url: {external: true}
+  backup_age_recipient: {external: true}

@@ -14,3 +14,6 @@ scrape_configs:
       credentials_file: /run/secrets/metrics_token
     static_configs:
       - targets: [api:3131]
+  - job_name: tonatiuh-backup
+    static_configs:
+      - targets: [backup-metrics:9100]

@@ -56,3 +56,8 @@ groups:
         for: 10m
         labels: {severity: warning}
         annotations: {summary: "Quota or entitlement denials increased",runbook: "docs/incidents/quotas.md"}
+      - alert: TonatiuhBackupStale
+        expr: time() - tonatiuh_backup_last_success_timestamp_seconds > 93600 or absent(tonatiuh_backup_last_success_timestamp_seconds)
+        for: 30m
+        labels: {severity: critical}
+        annotations: {summary: "No verified encrypted PostgreSQL backup completed within 26 hours",runbook: "docs/incidents/backups.md"}

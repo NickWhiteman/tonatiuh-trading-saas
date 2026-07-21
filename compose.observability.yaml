@@ -39,10 +39,21 @@ services:
     restart: unless-stopped
     depends_on: [prometheus]
 
+  backup-metrics:
+    image: prom/node-exporter:v1.9.1
+    command: ["--collector.disable-defaults","--collector.textfile","--collector.textfile.directory=/textfile"]
+    volumes: [backup-metrics:/textfile:ro]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [backend]
+    restart: unless-stopped
+
 volumes:
   prometheus-data:
   alertmanager-data:
   grafana-data:
+  backup-metrics:
 secrets:
   alert_webhook_url: {external: true}
   grafana_admin_password: {external: true}

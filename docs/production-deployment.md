@@ -32,7 +32,9 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
 ## Release procedure
 
 1. Build, scan, sign, and publish an immutable image tag or digest in CI.
-2. Take and verify a database backup. Perform restore drills regularly.
+2. Confirm managed PITR is healthy and take a verified encrypted logical backup.
+   Follow `docs/disaster-recovery.md`; an archive is not accepted until an
+   isolated restore has passed integrity checks.
 3. Review migrations. Schema changes must be backward-compatible expand steps;
    destructive contract steps happen only after old application versions are
    gone and backups have passed retention.
@@ -70,8 +72,11 @@ integrity audit.
 
 ## Backup and restore
 
-Run `ops/postgres/backup.sh` from a trusted PostgreSQL 17 tools container using a
-read-only/backup-capable credential and durable encrypted storage. It creates a
-custom-format dump, validates its catalog, and writes a SHA-256 file. Test
-`ops/postgres/restore.sh` against an isolated database; never run restore against
-production as a routine rollback mechanism.
+Publish the immutable `ops/postgres/Dockerfile` tools image and schedule the
+Compose `backup` profile at least daily. Provision `backup_database_url`, the
+public `backup_age_recipient`, and an external `BACKUP_VOLUME_NAME` backed by
+off-host durable storage. The job creates an encrypted custom-format dump,
+checksum and manifest and exports backup freshness for Prometheus. Use
+`ops/postgres/restore.sh` only against a newly created isolated database; it
+requires target-bound confirmation and runs `verify-restore.sh`. Full policy and
+drill cadence are in `docs/disaster-recovery.md`.

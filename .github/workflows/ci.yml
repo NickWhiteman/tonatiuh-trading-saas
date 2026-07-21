@@ -47,6 +47,13 @@ jobs:
       - run: npm run test:integration
         env:
           DATABASE_ROLE: tonatiuh_api
+      - name: Encrypted backup restore drill
+        run: |
+          docker build --tag tonatiuh-postgres-tools:ci ops/postgres
+          docker run --rm --network host --volume "$PWD:/workspace:ro" --workdir /workspace \
+            --env DRILL_SOURCE_DATABASE_URL="$DATABASE_URL" \
+            --env DRILL_DATABASE_URL="postgres://tonatiuh:integration-password@127.0.0.1:5432/tonatiuh_restore_drill" \
+            tonatiuh-postgres-tools:ci /usr/local/bin/ci-drill.sh
       - run: npm run lint
       - name: HTTP pipeline load baseline
         run: npm run test:load
