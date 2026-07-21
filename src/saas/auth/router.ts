@@ -138,11 +138,11 @@ authRouter.post('/refresh', async (req, res, next) => {
       if (!membership) throw new SaasHttpError(401, 'INVALID_REFRESH_TOKEN', 'Account access is unavailable.');
       const nextSession = tokens(stored.user_id, membership.organization_id, membership.role);
       const nextId = randomUUID();
-      await client.query('UPDATE refresh_tokens SET revoked_at=now(), replaced_by=$2 WHERE id=$1', [stored.id, nextId]);
       await client.query(
         `INSERT INTO refresh_tokens(id,user_id,organization_id,family_id,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,now()+make_interval(secs => $6))`,
         [nextId,stored.user_id,stored.organization_id,stored.family_id,hashRefreshToken(nextSession.refreshToken),getSaasConfig().refreshTokenTtlSeconds],
       );
+      await client.query('UPDATE refresh_tokens SET revoked_at=now(), replaced_by=$2 WHERE id=$1', [stored.id, nextId]);
       return { reused: false as const, session: nextSession };
     });
     if (rotation.reused) throw new SaasHttpError(401, 'REFRESH_TOKEN_REUSED', 'Refresh token reuse was detected.');

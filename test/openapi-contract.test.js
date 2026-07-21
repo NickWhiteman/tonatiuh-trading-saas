@@ -39,7 +39,7 @@ describe('OpenAPI contract',()=>{
   it('requires idempotency keys for money and bot commands',async()=>{const api=await SwaggerParser.dereference(contractPath);
     for(const path of ['/api/billing/checkout','/api/bots/{id}/start','/api/bots/{id}/stop','/api/bots/{id}/restart']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
-  it('keeps the documented routers mounted in the application',async()=>{const index=await readFile('src/index.ts','utf8');
-    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/api/admin'","'/health'","'/metrics'"])assert.ok(index.includes(mount),mount);
+  it('keeps the documented routers mounted in the application',async()=>{const app=await readFile('src/app.ts','utf8');
+    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/api/admin'","'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
     const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
 });
