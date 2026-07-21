@@ -1,0 +1,10 @@
+{
+  "annotations":{"list":[]},"editable":false,"graphTooltip":1,"links":[],"panels":[
+    {"type":"stat","title":"API availability","id":1,"gridPos":{"h":6,"w":6,"x":0,"y":0},"targets":[{"expr":"avg(up{job=\"tonatiuh-api\"})","legendFormat":"availability"}],"fieldConfig":{"defaults":{"unit":"percentunit"},"overrides":[]}},
+    {"type":"stat","title":"5xx ratio","id":2,"gridPos":{"h":6,"w":6,"x":6,"y":0},"targets":[{"expr":"sum(rate(tonatiuh_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(tonatiuh_http_requests_total[5m])),0.001)"}],"fieldConfig":{"defaults":{"unit":"percentunit"},"overrides":[]}},
+    {"type":"timeseries","title":"API latency percentiles","id":3,"gridPos":{"h":8,"w":12,"x":12,"y":0},"targets":[{"expr":"histogram_quantile(0.95,sum by(le)(rate(tonatiuh_http_request_duration_seconds_bucket[5m])))","legendFormat":"p95"},{"expr":"histogram_quantile(0.50,sum by(le)(rate(tonatiuh_http_request_duration_seconds_bucket[5m])))","legendFormat":"p50"}]},
+    {"type":"timeseries","title":"Bot states","id":4,"gridPos":{"h":8,"w":8,"x":0,"y":8},"targets":[{"expr":"tonatiuh_bots","legendFormat":"{{state}}"}]},
+    {"type":"timeseries","title":"Queue age","id":5,"gridPos":{"h":8,"w":8,"x":8,"y":8},"targets":[{"expr":"tonatiuh_oldest_pending_command_age_seconds","legendFormat":"commands"},{"expr":"tonatiuh_oldest_pending_email_age_seconds","legendFormat":"email"}]},
+    {"type":"timeseries","title":"Billing status","id":6,"gridPos":{"h":8,"w":8,"x":16,"y":8},"targets":[{"expr":"tonatiuh_subscriptions","legendFormat":"subscriptions {{status}}"},{"expr":"tonatiuh_payments_last_hour","legendFormat":"payments {{status}}"}]}
+  ],"refresh":"30s","schemaVersion":39,"tags":["tonatiuh","saas"],"templating":{"list":[]},"time":{"from":"now-6h","to":"now"},"timezone":"browser","title":"Tonatiuh SaaS Overview","uid":"tonatiuh-overview","version":1
+}

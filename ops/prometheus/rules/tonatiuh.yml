@@ -1,0 +1,43 @@
+groups:
+  - name: tonatiuh-slo
+    rules:
+      - alert: TonatiuhApiDown
+        expr: up{job="tonatiuh-api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Tonatiuh API metrics target is unavailable",runbook: "docs/incidents/api-down.md"}
+      - alert: TonatiuhHighErrorRate
+        expr: sum(rate(tonatiuh_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(tonatiuh_http_requests_total[5m])), 0.001) > 0.02
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "API 5xx rate exceeds 2%",runbook: "docs/incidents/api-errors.md"}
+      - alert: TonatiuhHighLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(tonatiuh_http_request_duration_seconds_bucket[10m]))) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "API p95 latency exceeds one second",runbook: "docs/incidents/api-latency.md"}
+      - alert: TonatiuhBotHeartbeatStale
+        expr: tonatiuh_oldest_bot_heartbeat_age_seconds > 90
+        for: 3m
+        labels: {severity: critical}
+        annotations: {summary: "A running bot heartbeat is stale",runbook: "docs/incidents/worker-queues.md"}
+      - alert: TonatiuhBotFailures
+        expr: tonatiuh_bots{state="FAILED"} > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "One or more trading bots are failed",runbook: "docs/incidents/worker-queues.md"}
+      - alert: TonatiuhCommandQueueStalled
+        expr: tonatiuh_oldest_pending_command_age_seconds > 300
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Bot command queue is stalled",runbook: "docs/incidents/worker-queues.md"}
+      - alert: TonatiuhEmailQueueStalled
+        expr: tonatiuh_oldest_pending_email_age_seconds > 600
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Email outbox is stalled",runbook: "docs/incidents/worker-queues.md"}
+      - alert: TonatiuhBillingFailures
+        expr: tonatiuh_payments_last_hour{status="canceled"} > 5 or tonatiuh_subscriptions{status="PAST_DUE"} > 10
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "Billing failures exceed the operational threshold",runbook: "docs/incidents/billing.md"}

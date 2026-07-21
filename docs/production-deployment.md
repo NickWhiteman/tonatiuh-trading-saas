@@ -48,6 +48,17 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
 5. Verify error rate, latency, worker heartbeat, queue depth, payment callbacks,
    and email delivery before completing the rollout.
 
+Start the internal monitoring stack by merging the observability file:
+
+```bash
+docker compose --env-file .env.production -f compose.production.yaml -f compose.observability.yaml up -d prometheus alertmanager grafana
+```
+
+Grafana binds only to `127.0.0.1:3000`; access it through an SSH tunnel or a
+separately authenticated private ingress. Configure `alert_webhook_url` and
+`grafana_admin_password` as external secrets. Objectives and escalation
+procedures are documented in `docs/slo.md` and `docs/incidents/`.
+
 ## Rollback
 
 Set `IMAGE_TAG` back to the previous immutable version and recreate runtime
