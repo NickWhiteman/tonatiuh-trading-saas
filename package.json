@@ -29,6 +29,7 @@
     "test": "npm run build && node --test test/*.test.js",
     "test:integration": "node --test test-integration/*.test.js",
     "openapi:validate": "node --test test/openapi-contract.test.js",
+    "admin:set-role": "node build/saas/admin/grant.js",
     "lint": "eslint ./src",
     "lint:fix": "eslint ./src --fix"
   },

@@ -50,3 +50,7 @@ status, and duration. Start the complete local production topology with
 The OpenAPI 3.1 contract is stored in `docs/openapi.yaml`. Validate it with
 `npm run openapi:validate`; CI also verifies route inventory, authentication,
 unique operation IDs, and required idempotency headers.
+
+Bootstrap or revoke platform administration from a trusted shell after running
+migrations: `npm run admin:set-role -- user@example.com ADMIN|USER`. Platform
+admin privileges are independent from organization roles.

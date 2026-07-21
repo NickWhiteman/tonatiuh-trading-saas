@@ -17,6 +17,9 @@ const expected = {
   '/api/bots':['get','post'], '/api/bots/{id}':['get','patch'], '/api/bots/{id}/start':['post'], '/api/bots/{id}/stop':['post'],
   '/api/bots/{id}/restart':['post'], '/api/bots/{id}/commands':['get'], '/api/bots/{id}/orders':['get'],
   '/health/live':['get'], '/health/ready':['get'], '/metrics':['get'],
+  '/api/admin/stats':['get'], '/api/admin/users':['get'], '/api/admin/users/{id}/status':['patch'],
+  '/api/admin/users/{id}/revoke-sessions':['post'], '/api/admin/organizations':['get'],
+  '/api/admin/organizations/{id}/status':['patch'], '/api/admin/audit-events':['get'], '/api/admin/payments':['get'], '/api/admin/system':['get'],
 };
 const publicOperations=new Set(['register','login','refreshSession','logout','verifyEmail','resendVerification','forgotPassword',
   'resetPassword','listPlans','yookassaWebhook','liveness','readiness']);
@@ -37,6 +40,6 @@ describe('OpenAPI contract',()=>{
     for(const path of ['/api/billing/checkout','/api/bots/{id}/start','/api/bots/{id}/stop','/api/bots/{id}/restart']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const index=await readFile('src/index.ts','utf8');
-    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/health'","'/metrics'"])assert.ok(index.includes(mount),mount);
+    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/api/admin'","'/health'","'/metrics'"])assert.ok(index.includes(mount),mount);
     const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
 });

@@ -13,6 +13,7 @@ tags:
   - {name: Exchanges}
   - {name: Bots}
   - {name: Organizations}
+  - {name: Platform Admin}
   - {name: Health}
 paths:
   /api/auth/register:
@@ -314,6 +315,60 @@ paths:
       operationId: liveness
       security: []
       responses: {'200': {description: Process is alive}}
+  /api/admin/stats:
+    get:
+      tags: [Platform Admin]
+      operationId: adminStats
+      responses: {'200': {description: Platform counters}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/users:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListUsers
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}, {$ref: '#/components/parameters/Search'}]
+      responses: {'200': {description: Users without credentials}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/users/{id}/status:
+    patch:
+      tags: [Platform Admin]
+      operationId: adminChangeUserStatus
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      requestBody: {$ref: '#/components/requestBodies/PlatformStatus'}
+      responses: {'200': {description: User status changed}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/users/{id}/revoke-sessions:
+    post:
+      tags: [Platform Admin]
+      operationId: adminRevokeUserSessions
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses: {'200': {description: Refresh sessions revoked}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/organizations:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListOrganizations
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}, {$ref: '#/components/parameters/Search'}]
+      responses: {'200': {description: Organizations and aggregate counts}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/organizations/{id}/status:
+    patch:
+      tags: [Platform Admin]
+      operationId: adminChangeOrganizationStatus
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      requestBody: {$ref: '#/components/requestBodies/PlatformStatus'}
+      responses: {'200': {description: Organization status changed}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/audit-events:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListAuditEvents
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
+      responses: {'200': {description: Platform audit events}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/payments:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListPayments
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
+      responses: {'200': {description: Sanitized payment records}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/system:
+    get:
+      tags: [Platform Admin]
+      operationId: adminSystemStatus
+      responses: {'200': {description: Worker and queue aggregates}, default: {$ref: '#/components/responses/Error'}}
   /health/ready:
     get:
       tags: [Health]
@@ -340,6 +395,9 @@ components:
     ResourceId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
     UserId: {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+    Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    Search: {name: search, in: query, schema: {type: string, maxLength: 320}}
   responses:
     Error:
       description: Standard API error
@@ -375,6 +433,9 @@ components:
     BotPatch:
       required: true
       content: {application/json: {schema: {type: object, additionalProperties: false, properties: {name: {type: string}, configuration: {$ref: '#/components/schemas/TradingConfiguration'}}}}}
+    PlatformStatus:
+      required: true
+      content: {application/json: {schema: {type: object,additionalProperties: false,required: [status],properties: {status: {type: string,enum: [ACTIVE,SUSPENDED]}}}}}
   schemas:
     ErrorResponse:
       type: object

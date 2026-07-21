@@ -19,6 +19,7 @@ describe('PostgreSQL migrations', () => {
       '001_saas_foundation.sql', '002_secure_auth.sql', '003_worker_runtime.sql',
       '004_secure_billing.sql', '005_trading_api.sql', '006_account_security.sql',
       '007_organization_members.sql',
+      '008_platform_admin.sql',
     ]);
   });
 
