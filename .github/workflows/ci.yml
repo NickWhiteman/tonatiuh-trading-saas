@@ -37,6 +37,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run openapi:validate
       - run: npm run db:migrate
       - name: Verify migrations are rerunnable
         run: npm run db:migrate

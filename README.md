@@ -44,3 +44,9 @@ sent to the child over IPC, never through command-line arguments.
 Logs are emitted as JSON and include `requestId`, tenant identifiers, response
 status, and duration. Start the complete local production topology with
 `docker compose up --build`; migrations complete before API and workers start.
+
+## API contract
+
+The OpenAPI 3.1 contract is stored in `docs/openapi.yaml`. Validate it with
+`npm run openapi:validate`; CI also verifies route inventory, authentication,
+unique operation IDs, and required idempotency headers.

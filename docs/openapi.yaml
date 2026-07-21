@@ -1,0 +1,373 @@
+openapi: 3.1.0
+info:
+  title: Tonatiuh Trading SaaS API
+  version: 1.0.0
+  description: Multi-tenant API for accounts, subscriptions, exchange connections, and trading bots.
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+tags:
+  - {name: Auth}
+  - {name: Billing}
+  - {name: Exchanges}
+  - {name: Bots}
+  - {name: Health}
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/Register'}
+      responses:
+        '201': {description: Account created; email verification required}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/Login'}
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/RefreshToken'}
+      responses:
+        '200': {$ref: '#/components/responses/Session'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/RefreshToken'}
+      responses:
+        '204': {description: Session revoked}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/verify-email:
+    post:
+      tags: [Auth]
+      operationId: verifyEmail
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/AccountToken'}
+      responses:
+        '200': {description: Email verified}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/resend-verification:
+    post:
+      tags: [Auth]
+      operationId: resendVerification
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/Email'}
+      responses:
+        '202': {description: Request accepted}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: forgotPassword
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/Email'}
+      responses:
+        '202': {description: Request accepted}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, password]
+              properties:
+                token: {type: string}
+                password: {type: string, minLength: 12, maxLength: 128, format: password}
+      responses:
+        '200': {description: Password replaced and sessions revoked}
+        default: {$ref: '#/components/responses/Error'}
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      operationId: currentAccount
+      responses:
+        '200': {description: Current account and organization}
+        default: {$ref: '#/components/responses/Error'}
+
+  /api/billing/plans:
+    get:
+      tags: [Billing]
+      operationId: listPlans
+      security: []
+      responses:
+        '200': {description: Available plans}
+        default: {$ref: '#/components/responses/Error'}
+  /api/billing/webhook:
+    post:
+      tags: [Billing]
+      operationId: yookassaWebhook
+      security: []
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        '200': {description: Notification verified and processed}
+        default: {$ref: '#/components/responses/Error'}
+  /api/billing/subscription:
+    get:
+      tags: [Billing]
+      operationId: getSubscription
+      responses:
+        '200': {description: Organization subscription}
+        default: {$ref: '#/components/responses/Error'}
+  /api/billing/checkout:
+    post:
+      tags: [Billing]
+      operationId: createCheckout
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '201': {description: YooKassa redirect payment created}
+        default: {$ref: '#/components/responses/Error'}
+  /api/billing/cancel:
+    post:
+      tags: [Billing]
+      operationId: cancelSubscription
+      responses:
+        '200': {description: Renewal disabled}
+        default: {$ref: '#/components/responses/Error'}
+  /api/billing/resume:
+    post:
+      tags: [Billing]
+      operationId: resumeSubscription
+      responses:
+        '200': {description: Renewal enabled}
+        default: {$ref: '#/components/responses/Error'}
+
+  /api/exchanges:
+    get:
+      tags: [Exchanges]
+      operationId: listExchangeConnections
+      responses:
+        '200': {description: Connections without credentials}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Exchanges]
+      operationId: createExchangeConnection
+      requestBody: {$ref: '#/components/requestBodies/ExchangeConnection'}
+      responses:
+        '201': {description: Encrypted connection created}
+        default: {$ref: '#/components/responses/Error'}
+  /api/exchanges/{id}:
+    patch:
+      tags: [Exchanges]
+      operationId: updateExchangeConnection
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      requestBody: {$ref: '#/components/requestBodies/ExchangeConnectionPatch'}
+      responses:
+        '200': {description: Connection updated}
+        default: {$ref: '#/components/responses/Error'}
+  /api/exchanges/{id}/verify:
+    post:
+      tags: [Exchanges]
+      operationId: verifyExchangeConnection
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses:
+        '200': {description: Credentials verified through the exchange API}
+        default: {$ref: '#/components/responses/Error'}
+
+  /api/bots:
+    get:
+      tags: [Bots]
+      operationId: listBots
+      responses:
+        '200': {description: Organization bots}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Bots]
+      operationId: createBot
+      requestBody: {$ref: '#/components/requestBodies/Bot'}
+      responses:
+        '201': {description: Bot created}
+        default: {$ref: '#/components/responses/Error'}
+  /api/bots/{id}:
+    get:
+      tags: [Bots]
+      operationId: getBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses:
+        '200': {description: Bot details}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      tags: [Bots]
+      operationId: updateBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      requestBody: {$ref: '#/components/requestBodies/BotPatch'}
+      responses:
+        '200': {description: Stopped bot updated}
+        default: {$ref: '#/components/responses/Error'}
+  /api/bots/{id}/start:
+    post:
+      tags: [Bots]
+      operationId: startBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'202': {description: Command accepted}, default: {$ref: '#/components/responses/Error'}}
+  /api/bots/{id}/stop:
+    post:
+      tags: [Bots]
+      operationId: stopBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'202': {description: Command accepted}, default: {$ref: '#/components/responses/Error'}}
+  /api/bots/{id}/restart:
+    post:
+      tags: [Bots]
+      operationId: restartBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'202': {description: Command accepted}, default: {$ref: '#/components/responses/Error'}}
+  /api/bots/{id}/commands:
+    get:
+      tags: [Bots]
+      operationId: listBotCommands
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses:
+        '200': {description: Last 100 commands}
+        default: {$ref: '#/components/responses/Error'}
+  /api/bots/{id}/orders:
+    get:
+      tags: [Bots]
+      operationId: listBotOrders
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses:
+        '200': {description: Last 200 orders}
+        default: {$ref: '#/components/responses/Error'}
+
+  /health/live:
+    get:
+      tags: [Health]
+      operationId: liveness
+      security: []
+      responses: {'200': {description: Process is alive}}
+  /health/ready:
+    get:
+      tags: [Health]
+      operationId: readiness
+      security: []
+      responses:
+        '200': {description: API and PostgreSQL are ready}
+        '503': {description: Service is not ready}
+  /metrics:
+    get:
+      tags: [Health]
+      operationId: prometheusMetrics
+      security: [{metricsToken: []}]
+      responses:
+        '200': {description: Prometheus text exposition format}
+        '401': {description: Metrics token is invalid}
+        '503': {description: Metrics endpoint is not configured}
+
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+    metricsToken: {type: http, scheme: bearer, bearerFormat: opaque metrics token}
+  parameters:
+    ResourceId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+  responses:
+    Error:
+      description: Standard API error
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    Session:
+      description: Access and rotating refresh tokens
+      content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}
+  requestBodies:
+    Register:
+      required: true
+      content: {application/json: {schema: {$ref: '#/components/schemas/Register'}}}
+    Login:
+      required: true
+      content: {application/json: {schema: {$ref: '#/components/schemas/Login'}}}
+    RefreshToken:
+      required: true
+      content: {application/json: {schema: {type: object, additionalProperties: false, required: [refreshToken], properties: {refreshToken: {type: string}}}}}
+    AccountToken:
+      required: true
+      content: {application/json: {schema: {type: object, additionalProperties: false, required: [token], properties: {token: {type: string}}}}}
+    Email:
+      required: true
+      content: {application/json: {schema: {type: object, additionalProperties: false, required: [email], properties: {email: {type: string, format: email, maxLength: 320}}}}}
+    ExchangeConnection:
+      required: true
+      content: {application/json: {schema: {$ref: '#/components/schemas/ExchangeConnectionInput'}}}
+    ExchangeConnectionPatch:
+      required: true
+      content: {application/json: {schema: {type: object, additionalProperties: false, properties: {label: {type: string}, enabled: {type: boolean}, apiKey: {type: string, writeOnly: true}, secret: {type: string, writeOnly: true}, password: {type: string, writeOnly: true}}}}}
+    Bot:
+      required: true
+      content: {application/json: {schema: {$ref: '#/components/schemas/BotInput'}}}
+    BotPatch:
+      required: true
+      content: {application/json: {schema: {type: object, additionalProperties: false, properties: {name: {type: string}, configuration: {$ref: '#/components/schemas/TradingConfiguration'}}}}}
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties: {code: {type: string}, message: {type: string}, requestId: {type: string}, details: {}}
+    Session:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties: {accessToken: {type: string, writeOnly: true}, refreshToken: {type: string, writeOnly: true}, expiresIn: {type: integer}}
+    Register:
+      type: object
+      additionalProperties: false
+      required: [email, password, displayName]
+      properties: {email: {type: string, format: email, maxLength: 320}, password: {type: string, format: password, minLength: 12, maxLength: 128}, displayName: {type: string, minLength: 2, maxLength: 120}, organizationName: {type: string, maxLength: 120}}
+    Login:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties: {email: {type: string, format: email}, password: {type: string, format: password}}
+    ExchangeConnectionInput:
+      type: object
+      additionalProperties: false
+      required: [exchange, label, apiKey, secret]
+      properties: {exchange: {type: string, enum: [okx, binance, bitget, kucoin, mexc, poloniex, gate, exmo, bybit]}, label: {type: string}, apiKey: {type: string, writeOnly: true}, secret: {type: string, writeOnly: true}, password: {type: string, writeOnly: true}, sandbox: {type: boolean}, verify: {type: boolean}}
+    BotInput:
+      type: object
+      additionalProperties: false
+      required: [exchangeConnectionId, name, configuration]
+      properties: {exchangeConnectionId: {type: string, format: uuid}, name: {type: string}, strategy: {type: string, enum: [VECTOR_PROFIT]}, configuration: {$ref: '#/components/schemas/TradingConfiguration'}}
+    TradingConfiguration:
+      type: object
+      additionalProperties: false
+      required: [symbol]
+      properties:
+        symbol: {type: string, pattern: '^[A-Z0-9]{2,12}/[A-Z0-9]{2,12}$'}
+        positionSize: {type: number, exclusiveMinimum: 0}
+        countGridSize: {type: number, minimum: 1, maximum: 100}
+        gridSize: {type: number, exclusiveMinimum: 0}
+        percentBuyBackStep: {type: number, minimum: 0, maximum: 1}
+        takeProfit: {type: number, minimum: 0, maximum: 1}
+        stopLoss: {type: number, minimum: 0, maximum: 1}
+        percentProfit: {type: number, minimum: 0, maximum: 1}
+        percentFromBalance: {type: number, exclusiveMinimum: 0, maximum: 1}
+        candlePriceRange: {type: string, enum: [1m, 5m, 15m, 1h, 4h, 1d]}
+        isFibonacci: {type: boolean}
+        isPercentTargetAfterTakeProfit: {type: boolean}
+        isCapitalizeDeltaFromSale: {type: boolean}
+        isCoinAccumulation: {type: boolean}
+        isOnlyBuy: {type: boolean}
+        percentTargetAfterTakeProfit: {type: number, minimum: 0, maximum: 1}
+        balanceDistribution: {type: boolean}
