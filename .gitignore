@@ -1,6 +1,7 @@
 # dependencies
 /node_modules
 /build
+/sdk/dist
 .env
 .env.production
 sessions.json

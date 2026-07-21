@@ -15,7 +15,7 @@ LOAD_MIN_RPS=100 LOAD_MAX_P95_MS=1000 LOAD_MAX_ERROR_RATE=0.001 \
 npm run test:load
 ```
 
-Use `LOAD_PATH=/api/auth/me` and `LOAD_BEARER_TOKEN` for an authenticated,
+Use `LOAD_PATH=/api/v1/auth/me` and `LOAD_BEARER_TOKEN` for an authenticated,
 database-backed profile. Create dedicated test tenants and credentials; never
 load-test production trading or payment mutation endpoints. Increase concurrency
 in steps, watching API p95, event-loop lag, PostgreSQL pool wait/locks, CPU,

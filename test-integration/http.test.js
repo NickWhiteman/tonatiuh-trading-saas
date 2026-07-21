@@ -14,6 +14,7 @@ const app = createApp();
 const encryption = new EncryptionService();
 const suffix = randomUUID();
 const password = 'Correct-Horse-Battery-Staple-42!';
+const api='/api/v1';
 const ownerEmail = `http-owner-${suffix}@example.test`;
 const memberEmail = `http-member-${suffix}@example.test`;
 const state = { organizationIds: [], userIds: [],eventIds:[] };
@@ -28,7 +29,7 @@ async function outboxToken(email, template) {
 }
 
 async function registerVerifyAndLogin(email, displayName) {
-  const registration = await request(app).post('/api/auth/register').send({
+  const registration = await request(app).post(`${api}/auth/register`).send({
     email,
     password,
     displayName,
@@ -42,13 +43,13 @@ async function registerVerifyAndLogin(email, displayName) {
   state.userIds.push(registration.body.user.id);
   state.organizationIds.push(registration.body.organization.id);
 
-  const verification = await request(app).post('/api/auth/verify-email').send({
+  const verification = await request(app).post(`${api}/auth/verify-email`).send({
     token: await outboxToken(email, 'VERIFY_EMAIL'),
   });
   assert.equal(verification.status, 200, JSON.stringify(verification.body));
   assert.equal(verification.body.verified, true);
 
-  const login = await request(app).post('/api/auth/login').send({ email, password });
+  const login = await request(app).post(`${api}/auth/login`).send({ email, password });
   assert.equal(login.status, 200, JSON.stringify(login.body));
   assert.ok(login.body.accessToken);
   assert.ok(login.body.refreshToken);
@@ -74,22 +75,25 @@ describe('SaaS HTTP lifecycle', () => {
   it('registers, verifies and authenticates an account', async () => {
     owner = await registerVerifyAndLogin(ownerEmail, 'HTTP Owner');
     ownerOrganizationId = owner.registration.organization.id;
-    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${owner.session.accessToken}`);
+    const me = await request(app).get(`${api}/auth/me`).set('Authorization', `Bearer ${owner.session.accessToken}`);
     assert.equal(me.status, 200, JSON.stringify(me.body));
     assert.equal(me.body.email, ownerEmail);
     assert.equal(me.body.organization_id, ownerOrganizationId);
+    const legacy=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    assert.equal(legacy.status,200,JSON.stringify(legacy.body));assert.equal(legacy.headers.deprecation,'@1784592000');
+    assert.equal(legacy.headers.link,'</api/v1/auth/me>; rel="successor-version"');
   });
 
   it('rotates refresh tokens and revokes the family on reuse', async () => {
-    const rotation = await request(app).post('/api/auth/refresh').send({ refreshToken: owner.session.refreshToken });
+    const rotation = await request(app).post(`${api}/auth/refresh`).send({ refreshToken: owner.session.refreshToken });
     assert.equal(rotation.status, 200, JSON.stringify(rotation.body));
     assert.notEqual(rotation.body.refreshToken, owner.session.refreshToken);
 
-    const reuse = await request(app).post('/api/auth/refresh').send({ refreshToken: owner.session.refreshToken });
+    const reuse = await request(app).post(`${api}/auth/refresh`).send({ refreshToken: owner.session.refreshToken });
     assert.equal(reuse.status, 401, JSON.stringify(reuse.body));
     assert.equal(reuse.body.error.code, 'REFRESH_TOKEN_REUSED');
 
-    const revokedFamily = await request(app).post('/api/auth/refresh').send({ refreshToken: rotation.body.refreshToken });
+    const revokedFamily = await request(app).post(`${api}/auth/refresh`).send({ refreshToken: rotation.body.refreshToken });
     assert.equal(revokedFamily.status, 401, JSON.stringify(revokedFamily.body));
     assert.equal(revokedFamily.body.error.code, 'REFRESH_TOKEN_REUSED');
   });
@@ -97,22 +101,22 @@ describe('SaaS HTTP lifecycle', () => {
   it('enforces the FREE connection quota under concurrent requests',async()=>{
     member = await registerVerifyAndLogin(memberEmail, 'HTTP Member');
     const payload=label=>({exchange:'okx',label,apiKey:'test-key',secret:'test-secret',sandbox:true,verify:false});
-    const attempts=await Promise.all(['primary','backup'].map(label=>request(app).post('/api/exchanges')
+    const attempts=await Promise.all(['primary','backup'].map(label=>request(app).post(`${api}/exchanges`)
       .set('Authorization',`Bearer ${member.session.accessToken}`).send(payload(label))));
     assert.deepEqual(attempts.map(response=>response.status).sort(),[201,409]);
     const rejected=attempts.find(response=>response.status===409);assert.equal(rejected.body.error.code,'QUOTA_EXCEEDED');
     assert.deepEqual(rejected.body.error.details,{resource:'exchangeConnections',plan:'FREE',limit:1,current:1});
     const connection=attempts.find(response=>response.status===201).body;
-    const bot=await request(app).post('/api/bots').set('Authorization',`Bearer ${member.session.accessToken}`)
+    const bot=await request(app).post(`${api}/bots`).set('Authorization',`Bearer ${member.session.accessToken}`)
       .send({exchangeConnectionId:connection.id,name:'free-bot',strategy:'VECTOR_PROFIT',configuration:{symbol:'BTC/USDT'}});
     assert.equal(bot.status,201,JSON.stringify(bot.body));
-    const extraBot=await request(app).post('/api/bots').set('Authorization',`Bearer ${member.session.accessToken}`)
+    const extraBot=await request(app).post(`${api}/bots`).set('Authorization',`Bearer ${member.session.accessToken}`)
       .send({exchangeConnectionId:connection.id,name:'extra-bot',strategy:'VECTOR_PROFIT',configuration:{symbol:'ETH/USDT'}});
     assert.equal(extraBot.status,409,JSON.stringify(extraBot.body));assert.equal(extraBot.body.error.code,'QUOTA_EXCEEDED');
-    const start=await request(app).post(`/api/bots/${bot.body.id}/start`).set('Authorization',`Bearer ${member.session.accessToken}`)
+    const start=await request(app).post(`${api}/bots/${bot.body.id}/start`).set('Authorization',`Bearer ${member.session.accessToken}`)
       .set('Idempotency-Key',`free-start-${suffix}`);
     assert.equal(start.status,402,JSON.stringify(start.body));assert.equal(start.body.error.code,'ENTITLEMENT_REQUIRED');
-    const stop=await request(app).post(`/api/bots/${bot.body.id}/stop`).set('Authorization',`Bearer ${member.session.accessToken}`)
+    const stop=await request(app).post(`${api}/bots/${bot.body.id}/stop`).set('Authorization',`Bearer ${member.session.accessToken}`)
       .set('Idempotency-Key',`free-stop-${suffix}`);
     assert.equal(stop.status,202,JSON.stringify(stop.body));
   });
@@ -121,26 +125,26 @@ describe('SaaS HTTP lifecycle', () => {
     await pool.query(`INSERT INTO subscriptions(organization_id,plan,status,current_period_end) VALUES($1,'PRO','ACTIVE',now()+interval '1 month')
       ON CONFLICT(organization_id) DO UPDATE SET plan='PRO',status='ACTIVE',current_period_end=EXCLUDED.current_period_end`,[ownerOrganizationId]);
     const invitation = await request(app)
-      .post('/api/organizations/invitations')
+      .post(`${api}/organizations/invitations`)
       .set('Authorization', `Bearer ${owner.session.accessToken}`)
       .send({ email: memberEmail, role: 'VIEWER' });
     assert.equal(invitation.status, 201, JSON.stringify(invitation.body));
 
     const accepted = await request(app)
-      .post('/api/organizations/invitations/accept')
+      .post(`${api}/organizations/invitations/accept`)
       .set('Authorization', `Bearer ${member.session.accessToken}`)
       .send({ token: await outboxToken(memberEmail, 'INVITE_MEMBER') });
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
     assert.equal(accepted.body.organizationId, ownerOrganizationId);
 
     const organizations = await request(app)
-      .get('/api/organizations')
+      .get(`${api}/organizations`)
       .set('Authorization', `Bearer ${member.session.accessToken}`);
     assert.equal(organizations.status, 200, JSON.stringify(organizations.body));
     assert.equal(organizations.body.items.length, 2);
 
     const switched = await request(app)
-      .post('/api/organizations/switch')
+      .post(`${api}/organizations/switch`)
       .set('Authorization', `Bearer ${member.session.accessToken}`)
       .send({ organizationId: ownerOrganizationId });
     assert.equal(switched.status, 200, JSON.stringify(switched.body));
@@ -148,19 +152,19 @@ describe('SaaS HTTP lifecycle', () => {
   });
 
   it('reports the effective plan, entitlements and usage',async()=>{
-    const usage=await request(app).get('/api/billing/usage').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    const usage=await request(app).get(`${api}/billing/usage`).set('Authorization',`Bearer ${owner.session.accessToken}`);
     assert.equal(usage.status,200,JSON.stringify(usage.body));assert.equal(usage.body.plan,'PRO');assert.equal(usage.body.entitlements.liveTrading,true);
     assert.equal(usage.body.usage.members,2);assert.equal(usage.body.usage.monthlyBotCommands,0);assert.match(usage.body.periodStart,/T00:00:00\.000Z$/);
   });
 
   it('revokes workspace access immediately when membership is removed', async () => {
     const removed = await request(app)
-      .delete(`/api/organizations/members/${member.registration.user.id}`)
+      .delete(`${api}/organizations/members/${member.registration.user.id}`)
       .set('Authorization', `Bearer ${owner.session.accessToken}`);
     assert.equal(removed.status, 204, JSON.stringify(removed.body));
 
     const rejected = await request(app)
-      .get('/api/auth/me')
+      .get(`${api}/auth/me`)
       .set('Authorization', `Bearer ${switchedAccessToken}`);
     assert.equal(rejected.status, 401, JSON.stringify(rejected.body));
     assert.equal(rejected.body.error.code, 'ACCOUNT_ACCESS_REVOKED');
@@ -168,14 +172,14 @@ describe('SaaS HTTP lifecycle', () => {
 
   it('enforces the Platform Admin boundary', async () => {
     const forbidden = await request(app)
-      .get('/api/admin/stats')
+      .get(`${api}/admin/stats`)
       .set('Authorization', `Bearer ${owner.session.accessToken}`);
     assert.equal(forbidden.status, 403, JSON.stringify(forbidden.body));
 
     await pool.query("UPDATE users SET platform_role='ADMIN' WHERE id=$1", [owner.registration.user.id]);
     try {
       const allowed = await request(app)
-        .get('/api/admin/stats')
+        .get(`${api}/admin/stats`)
         .set('Authorization', `Bearer ${owner.session.accessToken}`);
       assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
       assert.equal(typeof allowed.body.users, 'number');
@@ -186,21 +190,21 @@ describe('SaaS HTTP lifecycle', () => {
   });
 
   it('exports data and supports the account deletion recovery window',async()=>{
-    const exported=await request(app).get('/api/auth/me/export').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    const exported=await request(app).get(`${api}/auth/me/export`).set('Authorization',`Bearer ${owner.session.accessToken}`);
     assert.equal(exported.status,200,JSON.stringify(exported.body));assert.equal(exported.body.user.email,ownerEmail);assert.ok(Array.isArray(exported.body.memberships));
-    const scheduled=await request(app).delete('/api/auth/me').set('Authorization',`Bearer ${owner.session.accessToken}`).send({password});
+    const scheduled=await request(app).delete(`${api}/auth/me`).set('Authorization',`Bearer ${owner.session.accessToken}`).send({password});
     assert.equal(scheduled.status,202,JSON.stringify(scheduled.body));assert.equal(scheduled.body.retentionDays,30);
-    const revoked=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    const revoked=await request(app).get(`${api}/auth/me`).set('Authorization',`Bearer ${owner.session.accessToken}`);
     assert.equal(revoked.status,401,JSON.stringify(revoked.body));assert.equal(revoked.body.error.code,'ACCOUNT_ACCESS_REVOKED');
-    const cancelled=await request(app).post('/api/auth/cancel-deletion').send({email:ownerEmail,password});
+    const cancelled=await request(app).post(`${api}/auth/cancel-deletion`).send({email:ownerEmail,password});
     assert.equal(cancelled.status,200,JSON.stringify(cancelled.body));assert.equal(cancelled.body.cancelled,true);
-    const login=await request(app).post('/api/auth/login').send({email:ownerEmail,password});assert.equal(login.status,200,JSON.stringify(login.body));
+    const login=await request(app).post(`${api}/auth/login`).send({email:ownerEmail,password});assert.equal(login.status,200,JSON.stringify(login.body));
   });
 
   it('processes provider events idempotently and suppresses bounced recipients',async()=>{const messageId=`provider-${suffix}`;const eventId=`bounce-${suffix}`;state.eventIds.push(eventId);
     await pool.query(`INSERT INTO email_outbox(recipient,template,encrypted_payload,status,provider_message_id) VALUES($1,'VERIFY_EMAIL','test','SENT',$2)`,[memberEmail,messageId]);
-    const payload={eventId,messageId,type:'HARD_BOUNCE'};const first=await request(app).post('/api/email/provider-events').set('Authorization','Bearer integration-email-webhook-token').send(payload);
-    assert.equal(first.status,202,JSON.stringify(first.body));const replay=await request(app).post('/api/email/provider-events').set('Authorization','Bearer integration-email-webhook-token').send(payload);assert.equal(replay.status,202);
+    const payload={eventId,messageId,type:'HARD_BOUNCE'};const first=await request(app).post(`${api}/email/provider-events`).set('Authorization','Bearer integration-email-webhook-token').send(payload);
+    assert.equal(first.status,202,JSON.stringify(first.body));const replay=await request(app).post(`${api}/email/provider-events`).set('Authorization','Bearer integration-email-webhook-token').send(payload);assert.equal(replay.status,202);
     const outbox=await pool.query('SELECT status FROM email_outbox WHERE provider_message_id=$1',[messageId]);assert.equal(outbox.rows[0].status,'BOUNCED');
     const suppression=await pool.query('SELECT reason FROM email_suppressions WHERE email_hash=$1',[emailHash(memberEmail)]);assert.equal(suppression.rows[0].reason,'HARD_BOUNCE');
   });

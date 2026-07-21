@@ -2,9 +2,9 @@
 
 The API resolves the effective plan from an `ACTIVE` subscription whose
 `current_period_end` is in the future. Every other subscription state uses the
-FREE entitlements. The public `GET /api/billing/plans` response exposes the same
+FREE entitlements. The public `GET /api/v1/billing/plans` response exposes the same
 catalog that enforcement uses; billing-authorized organization members can read
-their effective limits and usage through `GET /api/billing/usage`.
+their effective limits and usage through `GET /api/v1/billing/usage`.
 
 | Entitlement | FREE | PRO |
 | --- | ---: | ---: |

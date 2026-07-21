@@ -5,7 +5,7 @@ const SwaggerParser = require('@apidevtools/swagger-parser');
 const { parse } = require('yaml');
 
 const contractPath = 'docs/openapi.yaml';
-const expected = {
+const unversionedExpected = {
   '/api/auth/register':['post'], '/api/auth/login':['post'], '/api/auth/refresh':['post'], '/api/auth/logout':['post'],
   '/api/auth/verify-email':['post'], '/api/auth/resend-verification':['post'], '/api/auth/forgot-password':['post'],
   '/api/auth/reset-password':['post'], '/api/auth/me':['delete','get'], '/api/billing/plans':['get'], '/api/billing/webhook':['post'],
@@ -23,6 +23,7 @@ const expected = {
   '/api/admin/organizations/{id}/status':['patch'], '/api/admin/audit-events':['get'], '/api/admin/payments':['get'], '/api/admin/system':['get'],
   '/api/email/provider-events':['post'], '/api/admin/email/dead-letters':['get'], '/api/admin/email/dead-letters/{id}/retry':['post'],
 };
+const expected=Object.fromEntries(Object.entries(unversionedExpected).map(([path,methods])=>[path.replace('/api/','/api/v1/'),methods]));
 const publicOperations=new Set(['register','login','refreshSession','logout','verifyEmail','resendVerification','forgotPassword',
   'resetPassword','cancelAccountDeletion','listPlans','yookassaWebhook','liveness','readiness']);
 
@@ -40,9 +41,10 @@ describe('OpenAPI contract',()=>{
       else assert.deepEqual(operation.security??api.security,[{bearerAuth:[]}],`${operation.operationId} must require Bearer auth`);}
     assert.equal(new Set(ids).size,ids.length);});
   it('requires idempotency keys for money and bot commands',async()=>{const api=await SwaggerParser.dereference(contractPath);
-    for(const path of ['/api/billing/checkout','/api/bots/{id}/start','/api/bots/{id}/stop','/api/bots/{id}/restart']){
+    for(const path of ['/api/v1/billing/checkout','/api/v1/bots/{id}/start','/api/v1/bots/{id}/stop','/api/v1/bots/{id}/restart']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const app=await readFile('src/app.ts','utf8');
-    for(const mount of ["'/api/auth'","'/api/billing'","'/api/email'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/api/admin'","'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
+    for(const mount of ['app.use(API_V1_PREFIX,apiRouter)','app.use(LEGACY_API_PREFIX,legacyApiDeprecation,apiRouter)',"'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
+    const router=await readFile('src/saas/api.ts','utf8');for(const mount of ["'/auth'","'/billing'","'/email'","'/exchanges'","'/bots'","'/organizations'","'/admin'"])assert.ok(router.includes(mount),mount);
     const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
 });

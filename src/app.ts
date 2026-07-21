@@ -4,16 +4,11 @@ import express, { Express } from 'express';
 import helmet from 'helmet';
 
 import { localCorsOrigin } from './middleware/local-api-security';
-import { adminRouter } from './saas/admin/router';
-import { authRouter } from './saas/auth/router';
-import { billingRouter } from './saas/billing/router';
+import { apiRouter } from './saas/api';
+import { API_V1_PREFIX, legacyApiDeprecation, LEGACY_API_PREFIX } from './saas/api-versioning';
 import { errorHandler, requestContext } from './saas/http/middleware';
 import { healthRouter } from './saas/observability/health';
 import { metricsRouter, observeRequests } from './saas/observability/metrics';
-import { organizationsRouter } from './saas/organizations/router';
-import { botsRouter } from './saas/trading/bots.router';
-import { exchangesRouter } from './saas/trading/exchanges.router';
-import { emailEventsRouter } from './saas/email/router';
 
 export function createApp(mountAdditionalRoutes?: (app: Express) => void): Express {
   const app = express();
@@ -25,19 +20,15 @@ export function createApp(mountAdditionalRoutes?: (app: Express) => void): Expre
   app.use(cors({
     origin: localCorsOrigin,
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],
+    exposedHeaders: ['Deprecation','Sunset','Link','X-Request-Id'],
   }));
   app.use(bodyParser.json({ limit: '1mb' }));
   app.use(requestContext);
   app.use(observeRequests);
   app.use('/health', healthRouter);
   app.use('/metrics', metricsRouter);
-  app.use('/api/auth', authRouter);
-  app.use('/api/billing', billingRouter);
-  app.use('/api/email',emailEventsRouter);
-  app.use('/api/exchanges', exchangesRouter);
-  app.use('/api/bots', botsRouter);
-  app.use('/api/organizations', organizationsRouter);
-  app.use('/api/admin', adminRouter);
+  app.use(API_V1_PREFIX,apiRouter);
+  app.use(LEGACY_API_PREFIX,legacyApiDeprecation,apiRouter);
 
   mountAdditionalRoutes?.(app);
   app.use(errorHandler);

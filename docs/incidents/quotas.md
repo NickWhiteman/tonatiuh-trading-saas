@@ -8,7 +8,7 @@ rejected in 15 minutes and the condition persisted for 10 minutes.
 2. Correlate the interval with billing webhook errors, expired subscriptions and
    deployments. Confirm the effective subscription in PostgreSQL without
    changing it manually.
-3. For a single tenant, compare `GET /api/billing/usage` with the plan catalog and
+3. For a single tenant, compare `GET /api/v1/billing/usage` with the plan catalog and
    inspect recent audit events. Do not expose credential ciphertext or payment
    provider payloads in support tickets.
 4. If valid payments were not activated, follow `docs/incidents/billing.md` and

@@ -38,6 +38,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run openapi:validate
+      - run: npm run openapi:compat
+      - run: npm run sdk:check
+      - run: npm run sdk:build
       - run: npm run db:migrate
       - name: Verify migrations are rerunnable
         run: npm run db:migrate

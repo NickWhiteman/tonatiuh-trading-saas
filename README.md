@@ -51,12 +51,17 @@ The OpenAPI 3.1 contract is stored in `docs/openapi.yaml`. Validate it with
 `npm run openapi:validate`; CI also verifies route inventory, authentication,
 unique operation IDs, and required idempotency headers.
 
+The canonical API prefix is `/api/v1`. The unversioned `/api` alias is deprecated
+and remains available through 21 July 2027. Compatibility rules, migration
+headers and the generated `@tonatiuh/trading-sdk` workflow are documented in
+`docs/api-versioning.md`.
+
 Bootstrap or revoke platform administration from a trusted shell after running
 migrations: `npm run admin:set-role -- user@example.com ADMIN|USER`. Platform
 admin privileges are independent from organization roles.
 
 Plan limits and downgrade behavior are documented in
-`docs/entitlements.md`. `GET /api/billing/usage` returns the effective plan,
+`docs/entitlements.md`. `GET /api/v1/billing/usage` returns the effective plan,
 current limits and organization usage to OWNER and BILLING roles.
 
 ## PostgreSQL isolation

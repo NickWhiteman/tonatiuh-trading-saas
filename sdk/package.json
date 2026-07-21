@@ -1,0 +1,13 @@
+{
+  "name": "@tonatiuh/trading-sdk",
+  "version": "1.0.0",
+  "description": "Generated TypeScript client for Tonatiuh Trading SaaS API v1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "engines": {"node": ">=20.17.0"},
+  "license": "ISC"
+}

@@ -1,0 +1,1497 @@
+{
+  "version": "1.0.0",
+  "operations": {
+    "register": {
+      "method": "post",
+      "path": "/api/v1/auth/register",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Register"
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "login": {
+      "method": "post",
+      "path": "/api/v1/auth/login",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Login"
+        }
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/Session"
+        },
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "refreshSession": {
+      "method": "post",
+      "path": "/api/v1/auth/refresh",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "refreshToken"
+          ],
+          "properties": {
+            "refreshToken": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/Session"
+        },
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "logout": {
+      "method": "post",
+      "path": "/api/v1/auth/logout",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "refreshToken"
+          ],
+          "properties": {
+            "refreshToken": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "verifyEmail": {
+      "method": "post",
+      "path": "/api/v1/auth/verify-email",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "token"
+          ],
+          "properties": {
+            "token": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "resendVerification": {
+      "method": "post",
+      "path": "/api/v1/auth/resend-verification",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "email"
+          ],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 320
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "forgotPassword": {
+      "method": "post",
+      "path": "/api/v1/auth/forgot-password",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "email"
+          ],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 320
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "resetPassword": {
+      "method": "post",
+      "path": "/api/v1/auth/reset-password",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "token",
+            "password"
+          ],
+          "properties": {
+            "token": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string",
+              "minLength": 12,
+              "maxLength": 128,
+              "format": "password"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "cancelAccountDeletion": {
+      "method": "post",
+      "path": "/api/v1/auth/cancel-deletion",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Login"
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "currentAccount": {
+      "method": "get",
+      "path": "/api/v1/auth/me",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "scheduleAccountDeletion": {
+      "method": "delete",
+      "path": "/api/v1/auth/me",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "password"
+          ],
+          "properties": {
+            "password": {
+              "type": "string",
+              "format": "password"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "exportAccountData": {
+      "method": "get",
+      "path": "/api/v1/auth/me/export",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listPlans": {
+      "method": "get",
+      "path": "/api/v1/billing/plans",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listOrganizations": {
+      "method": "get",
+      "path": "/api/v1/organizations",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "switchOrganization": {
+      "method": "post",
+      "path": "/api/v1/organizations/switch",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "organizationId"
+          ],
+          "properties": {
+            "organizationId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/Session"
+        },
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listOrganizationMembers": {
+      "method": "get",
+      "path": "/api/v1/organizations/members",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "updateMemberRole": {
+      "method": "patch",
+      "path": "/api/v1/organizations/members/{userId}",
+      "parameters": [
+        {
+          "name": "userId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "role"
+          ],
+          "properties": {
+            "role": {
+              "$ref": "#/components/schemas/AssignableRole"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "removeMember": {
+      "method": "delete",
+      "path": "/api/v1/organizations/members/{userId}",
+      "parameters": [
+        {
+          "name": "userId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listInvitations": {
+      "method": "get",
+      "path": "/api/v1/organizations/invitations",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "createInvitation": {
+      "method": "post",
+      "path": "/api/v1/organizations/invitations",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "email",
+            "role"
+          ],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "role": {
+              "$ref": "#/components/schemas/AssignableRole"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "acceptInvitation": {
+      "method": "post",
+      "path": "/api/v1/organizations/invitations/accept",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "token"
+          ],
+          "properties": {
+            "token": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "revokeInvitation": {
+      "method": "delete",
+      "path": "/api/v1/organizations/invitations/{id}",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "yookassaWebhook": {
+      "method": "post",
+      "path": "/api/v1/billing/webhook",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object"
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "getSubscription": {
+      "method": "get",
+      "path": "/api/v1/billing/subscription",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "getPlanUsage": {
+      "method": "get",
+      "path": "/api/v1/billing/usage",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "createCheckout": {
+      "method": "post",
+      "path": "/api/v1/billing/checkout",
+      "parameters": [
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "cancelSubscription": {
+      "method": "post",
+      "path": "/api/v1/billing/cancel",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "resumeSubscription": {
+      "method": "post",
+      "path": "/api/v1/billing/resume",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listExchangeConnections": {
+      "method": "get",
+      "path": "/api/v1/exchanges",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "createExchangeConnection": {
+      "method": "post",
+      "path": "/api/v1/exchanges",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/ExchangeConnectionInput"
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "updateExchangeConnection": {
+      "method": "patch",
+      "path": "/api/v1/exchanges/{id}",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "apiKey": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "secret": {
+              "type": "string",
+              "writeOnly": true
+            },
+            "password": {
+              "type": "string",
+              "writeOnly": true
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "verifyExchangeConnection": {
+      "method": "post",
+      "path": "/api/v1/exchanges/{id}/verify",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listBots": {
+      "method": "get",
+      "path": "/api/v1/bots",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "createBot": {
+      "method": "post",
+      "path": "/api/v1/bots",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/BotInput"
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "getBot": {
+      "method": "get",
+      "path": "/api/v1/bots/{id}",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "updateBot": {
+      "method": "patch",
+      "path": "/api/v1/bots/{id}",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "configuration": {
+              "$ref": "#/components/schemas/TradingConfiguration"
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "startBot": {
+      "method": "post",
+      "path": "/api/v1/bots/{id}/start",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "stopBot": {
+      "method": "post",
+      "path": "/api/v1/bots/{id}/stop",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "restartBot": {
+      "method": "post",
+      "path": "/api/v1/bots/{id}/restart",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listBotCommands": {
+      "method": "get",
+      "path": "/api/v1/bots/{id}/commands",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "listBotOrders": {
+      "method": "get",
+      "path": "/api/v1/bots/{id}/orders",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "emailProviderEvent": {
+      "method": "post",
+      "path": "/api/v1/email/provider-events",
+      "parameters": [],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "eventId",
+            "messageId",
+            "type"
+          ],
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "messageId": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "DELIVERED",
+                "HARD_BOUNCE",
+                "COMPLAINT"
+              ]
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "liveness": {
+      "method": "get",
+      "path": "/health/live",
+      "parameters": [],
+      "responses": {}
+    },
+    "adminStats": {
+      "method": "get",
+      "path": "/api/v1/admin/stats",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListUsers": {
+      "method": "get",
+      "path": "/api/v1/admin/users",
+      "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        {
+          "name": "search",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "maxLength": 320
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminChangeUserStatus": {
+      "method": "patch",
+      "path": "/api/v1/admin/users/{id}/status",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "SUSPENDED"
+              ]
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminRevokeUserSessions": {
+      "method": "post",
+      "path": "/api/v1/admin/users/{id}/revoke-sessions",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListOrganizations": {
+      "method": "get",
+      "path": "/api/v1/admin/organizations",
+      "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        {
+          "name": "search",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "maxLength": 320
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminChangeOrganizationStatus": {
+      "method": "patch",
+      "path": "/api/v1/admin/organizations/{id}/status",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "SUSPENDED"
+              ]
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListAuditEvents": {
+      "method": "get",
+      "path": "/api/v1/admin/audit-events",
+      "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListPayments": {
+      "method": "get",
+      "path": "/api/v1/admin/payments",
+      "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminSystemStatus": {
+      "method": "get",
+      "path": "/api/v1/admin/system",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListEmailDeadLetters": {
+      "method": "get",
+      "path": "/api/v1/admin/email/dead-letters",
+      "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminRetryEmailDeadLetter": {
+      "method": "post",
+      "path": "/api/v1/admin/email/dead-letters/{id}/retry",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "readiness": {
+      "method": "get",
+      "path": "/health/ready",
+      "parameters": [],
+      "responses": {}
+    },
+    "prometheusMetrics": {
+      "method": "get",
+      "path": "/metrics",
+      "parameters": [],
+      "responses": {}
+    }
+  },
+  "schemas": {
+    "ErrorResponse": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "message",
+            "requestId"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "details": {}
+          }
+        }
+      }
+    },
+    "Session": {
+      "type": "object",
+      "required": [
+        "accessToken",
+        "refreshToken",
+        "expiresIn"
+      ],
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "refreshToken": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "expiresIn": {
+          "type": "integer"
+        }
+      }
+    },
+    "AssignableRole": {
+      "type": "string",
+      "enum": [
+        "ADMIN",
+        "TRADER",
+        "ANALYST",
+        "BILLING",
+        "VIEWER"
+      ]
+    },
+    "Register": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "email",
+        "password",
+        "displayName",
+        "acceptTerms",
+        "acceptPrivacy"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 320
+        },
+        "password": {
+          "type": "string",
+          "format": "password",
+          "minLength": 12,
+          "maxLength": 128
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "organizationName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "acceptTerms": {
+          "type": "boolean"
+        },
+        "acceptPrivacy": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Login": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "email",
+        "password"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "password": {
+          "type": "string",
+          "format": "password"
+        }
+      }
+    },
+    "ExchangeConnectionInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exchange",
+        "label",
+        "apiKey",
+        "secret"
+      ],
+      "properties": {
+        "exchange": {
+          "type": "string",
+          "enum": [
+            "okx",
+            "binance",
+            "bitget",
+            "kucoin",
+            "mexc",
+            "poloniex",
+            "gate",
+            "exmo",
+            "bybit"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "apiKey": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "secret": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "password": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "sandbox": {
+          "type": "boolean"
+        },
+        "verify": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BotInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exchangeConnectionId",
+        "name",
+        "configuration"
+      ],
+      "properties": {
+        "exchangeConnectionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "VECTOR_PROFIT"
+          ]
+        },
+        "configuration": {
+          "$ref": "#/components/schemas/TradingConfiguration"
+        }
+      }
+    },
+    "TradingConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symbol"
+      ],
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{2,12}/[A-Z0-9]{2,12}$"
+        },
+        "positionSize": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "countGridSize": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "gridSize": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "percentBuyBackStep": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "takeProfit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "stopLoss": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "percentProfit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "percentFromBalance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "candlePriceRange": {
+          "type": "string",
+          "enum": [
+            "1m",
+            "5m",
+            "15m",
+            "1h",
+            "4h",
+            "1d"
+          ]
+        },
+        "isFibonacci": {
+          "type": "boolean"
+        },
+        "isPercentTargetAfterTakeProfit": {
+          "type": "boolean"
+        },
+        "isCapitalizeDeltaFromSale": {
+          "type": "boolean"
+        },
+        "isCoinAccumulation": {
+          "type": "boolean"
+        },
+        "isOnlyBuy": {
+          "type": "boolean"
+        },
+        "percentTargetAfterTakeProfit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "balanceDistribution": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

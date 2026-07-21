@@ -15,14 +15,14 @@ contracts and accounting rules applicable to the operating company.
 | Audit IP address and metadata | 400 days, then stripped |
 | Data-subject request evidence | 6 years, pseudonymous subject hash |
 
-`GET /api/auth/me/export` returns profile, consent, memberships and user audit
+`GET /api/v1/auth/me/export` returns profile, consent, memberships and user audit
 actions. It intentionally excludes credential ciphertext, password/token hashes,
 payment methods, provider payloads and other workspace members' personal data.
 
-`DELETE /api/auth/me` requires the current password. It rejects deletion while
+`DELETE /api/v1/auth/me` requires the current password. It rejects deletion while
 the user owns a workspace with other members, revokes all refresh sessions and
 schedules anonymization after 30 days. During the window the account cannot use
-authenticated endpoints. `POST /api/auth/cancel-deletion` requires email and
+authenticated endpoints. `POST /api/v1/auth/cancel-deletion` requires email and
 password and restores access.
 
 After the deadline the retention worker removes PII, credentials, trading
