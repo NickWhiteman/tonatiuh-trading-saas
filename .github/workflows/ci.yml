@@ -45,6 +45,15 @@ jobs:
         env:
           DATABASE_ROLE: tonatiuh_api
       - run: npm run lint
+      - name: HTTP pipeline load baseline
+        run: npm run test:load
+        env:
+          LOAD_DURATION_SECONDS: 5
+          LOAD_WARMUP_SECONDS: 1
+          LOAD_CONCURRENCY: 20
+          LOAD_MIN_RPS: 100
+          LOAD_MAX_P95_MS: 1000
+          LOAD_MAX_EVENT_LOOP_P99_MS: 500
       - run: npm audit --audit-level=high
 
   container:

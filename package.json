@@ -28,6 +28,7 @@
     "worker:email:dev": "npx ts-node src/saas/email/worker.ts",
     "test": "npm run build && node --test test/*.test.js",
     "test:integration": "node --test --test-concurrency=1 test-integration/*.test.js",
+    "test:load": "node test-load/run.js",
     "openapi:validate": "node --test test/openapi-contract.test.js",
     "admin:set-role": "node build/saas/admin/grant.js",
     "lint": "eslint ./src",
