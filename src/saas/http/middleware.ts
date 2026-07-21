@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { ErrorRequestHandler, RequestHandler } from 'express';
 import { SaasHttpError } from './errors';
 import { verifyAccessToken } from '../security/token';
+import { logger } from '../observability/logger';
 
 export const requestContext: RequestHandler = (req, res, next) => {
   const suppliedId = req.header('x-request-id');
@@ -30,7 +31,7 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   const knownError = error instanceof SaasHttpError;
   const status = knownError ? error.status : 500;
   if (!knownError) {
-    console.error(JSON.stringify({ level: 'error', requestId: req.requestId, error }));
+    logger.error({requestId:req.requestId,err:error},'request failed');
   }
   res.status(status).json({
     error: {

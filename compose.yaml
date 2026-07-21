@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tonatiuh
+      POSTGRES_USER: tonatiuh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tonatiuh -d tonatiuh"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  migrate:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+    command: ["node", "build/saas/migrate.js"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+  api:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+    ports: ["3131:3131"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    init: true
+    restart: unless-stopped
+  trading-worker:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      SAAS_BOT_DATA_DIR: /app/data
+    command: ["node", "build/saas/worker.js"]
+    volumes: [bot-data:/app/data]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    init: true
+    restart: unless-stopped
+  billing-worker:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+    command: ["node", "build/saas/billing/renewals.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    init: true
+    restart: unless-stopped
+  email-worker:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+    command: ["node", "build/saas/email/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    init: true
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  bot-data:

@@ -1,5 +1,6 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { getSaasConfig } from '../config';
+import { logger } from '../observability/logger';
 
 let pool: Pool | undefined;
 
@@ -10,8 +11,10 @@ export function getSaasPool(): Pool {
       connectionString: config.databaseUrl,
       max: config.databasePoolSize,
       idleTimeoutMillis: config.databaseIdleTimeoutMs,
+      connectionTimeoutMillis: config.databaseConnectionTimeoutMs,
       application_name: 'tonatiuh-trading-saas',
     });
+    pool.on('error',(error)=>logger.error({err:error},'unexpected PostgreSQL pool error'));
   }
   return pool;
 }

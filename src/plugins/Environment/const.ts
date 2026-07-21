@@ -16,4 +16,5 @@ export const ENV = {
   APP_MODE: appMode as 'desktop' | 'web',
   DATA_DIR: path.resolve(optionalEnvConfig('TONATIUH_DATA_DIR') ?? process.cwd()),
   API_TOKEN: optionalEnvConfig('TONATIUH_API_TOKEN'),
+  HOST: optionalEnvConfig('HOST') ?? (appMode === 'web' ? '0.0.0.0' : '127.0.0.1'),
 };

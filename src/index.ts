@@ -20,6 +20,9 @@ import { authRouter } from './saas/auth/router';
 import { billingRouter } from './saas/billing/router';
 import { exchangesRouter } from './saas/trading/exchanges.router';
 import { botsRouter } from './saas/trading/bots.router';
+import { healthRouter, runtimeHealth } from './saas/observability/health';
+import { metricsRouter, observeRequests } from './saas/observability/metrics';
+import { logger } from './saas/observability/logger';
 
 function autoStarterTrading({
   configs,
@@ -67,6 +70,9 @@ async function main() {
   app.use(cors({ origin: localCorsOrigin, allowedHeaders: ['Content-Type', 'Authorization','Idempotency-Key','X-Request-Id'] }));
   app.use(bodyParser.json({ limit: '1mb' }));
   app.use(requestContext);
+  app.use(observeRequests);
+  app.use('/health',healthRouter);
+  app.use('/metrics',metricsRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/billing', billingRouter);
   app.use('/api/exchanges', exchangesRouter);
@@ -111,14 +117,17 @@ async function main() {
     databaseListManager,
   });
 
-  const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`Trading service listening on port ${port}!`);
+  const server = app.listen(port, ENV.HOST, () => {
+    runtimeHealth.markReady();
+    logger.info({port,host:ENV.HOST,appMode:ENV.APP_MODE},'trading service started');
   });
 
   let isShuttingDown = false;
   const shutdown = () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
+    runtimeHealth.markStopping();
+    logger.info('shutdown started');
     tradingWorkerManager.stopAll();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 7_000).unref();
@@ -127,13 +136,13 @@ async function main() {
   process.once('SIGINT', shutdown);
 
   process.on('uncaughtException', (err) => {
-    console.error('There was an uncaught error', err);
+    logger.fatal({err},'uncaught exception');
     shutdown();
     process.exit(1);
   });
 
   process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    logger.fatal({promise,reason},'unhandled rejection');
     shutdown();
     process.exit(1);
   });

@@ -4,6 +4,7 @@ export type SaasConfig = {
   databaseUrl: string;
   databasePoolSize: number;
   databaseIdleTimeoutMs: number;
+  databaseConnectionTimeoutMs: number;
   jwtSecret: string;
   jwtIssuer: string;
   jwtAudience: string;
@@ -36,6 +37,7 @@ export function getSaasConfig(): SaasConfig {
     databaseUrl,
     databasePoolSize: positiveInteger('DATABASE_POOL_SIZE', 20),
     databaseIdleTimeoutMs: positiveInteger('DATABASE_IDLE_TIMEOUT_MS', 30_000),
+    databaseConnectionTimeoutMs: positiveInteger('DATABASE_CONNECTION_TIMEOUT_MS', 5_000),
     jwtSecret,
     jwtIssuer: optionalEnvConfig('JWT_ISSUER') ?? 'tonatiuh-trading-saas',
     jwtAudience: optionalEnvConfig('JWT_AUDIENCE') ?? 'tonatiuh-trading-api',

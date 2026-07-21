@@ -34,3 +34,13 @@ advisory lock after a leader failure and restore bots whose desired state is
 `RUNNING`. Persist `SAAS_BOT_DATA_DIR`; each bot receives an isolated SQLite
 runtime directory. Exchange credentials are decrypted only by the leader and
 sent to the child over IPC, never through command-line arguments.
+
+## Production observability
+
+- Liveness: `GET /health/live`
+- Readiness (including PostgreSQL): `GET /health/ready`
+- Prometheus: `GET /metrics` with `Authorization: Bearer $METRICS_TOKEN`
+
+Logs are emitted as JSON and include `requestId`, tenant identifiers, response
+status, and duration. Start the complete local production topology with
+`docker compose up --build`; migrations complete before API and workers start.
