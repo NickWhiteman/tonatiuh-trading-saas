@@ -55,6 +55,10 @@ Bootstrap or revoke platform administration from a trusted shell after running
 migrations: `npm run admin:set-role -- user@example.com ADMIN|USER`. Platform
 admin privileges are independent from organization roles.
 
+Plan limits and downgrade behavior are documented in
+`docs/entitlements.md`. `GET /api/billing/usage` returns the effective plan,
+current limits and organization usage to OWNER and BILLING roles.
+
 ## PostgreSQL isolation
 
 Migration `009_postgres_rls.sql` provisions three NOLOGIN roles. Run migrations
@@ -64,7 +68,7 @@ with the database owner or a dedicated login that can create roles, then use
 not be shared with runtime containers in production.
 
 Row Level Security is forced on exchange connections, bots, commands, sessions,
-orders, subscriptions, payments, and audit events. API requests set the tenant
+orders, subscriptions, payments, monthly usage, and audit events. API requests set the tenant
 context inside each database transaction. Platform administration and trusted
 webhook/worker operations use explicit, narrowly scoped contexts. Production
 deployments should use separate login credentials for migration, API, and worker

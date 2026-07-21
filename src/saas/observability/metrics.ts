@@ -1,12 +1,14 @@
 import { timingSafeEqual } from 'crypto';
 import { RequestHandler, Router } from 'express';
-import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
+import { collectDefaultMetrics, Counter, Histogram } from 'prom-client';
 import { optionalEnvConfig } from '../../plugins/Environment/environment';
 import { logger } from './logger';
 import { runWithServiceDatabaseContext } from '../db/access-context';
 import { registerBusinessMetrics } from './business-metrics';
+import { metricsRegistry } from './registry';
+import './application-metrics';
 
-export const metricsRegistry=new Registry();
+export { metricsRegistry };
 collectDefaultMetrics({register:metricsRegistry,prefix:'tonatiuh_'});
 registerBusinessMetrics(metricsRegistry);
 const requests=new Counter({name:'tonatiuh_http_requests_total',help:'Completed HTTP requests',labelNames:['method','route','status'],registers:[metricsRegistry]});

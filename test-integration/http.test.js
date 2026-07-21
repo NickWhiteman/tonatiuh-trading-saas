@@ -94,8 +94,32 @@ describe('SaaS HTTP lifecycle', () => {
     assert.equal(revokedFamily.body.error.code, 'REFRESH_TOKEN_REUSED');
   });
 
-  it('invites a member and switches their workspace context', async () => {
+  it('enforces the FREE connection quota under concurrent requests',async()=>{
     member = await registerVerifyAndLogin(memberEmail, 'HTTP Member');
+    const payload=label=>({exchange:'okx',label,apiKey:'test-key',secret:'test-secret',sandbox:true,verify:false});
+    const attempts=await Promise.all(['primary','backup'].map(label=>request(app).post('/api/exchanges')
+      .set('Authorization',`Bearer ${member.session.accessToken}`).send(payload(label))));
+    assert.deepEqual(attempts.map(response=>response.status).sort(),[201,409]);
+    const rejected=attempts.find(response=>response.status===409);assert.equal(rejected.body.error.code,'QUOTA_EXCEEDED');
+    assert.deepEqual(rejected.body.error.details,{resource:'exchangeConnections',plan:'FREE',limit:1,current:1});
+    const connection=attempts.find(response=>response.status===201).body;
+    const bot=await request(app).post('/api/bots').set('Authorization',`Bearer ${member.session.accessToken}`)
+      .send({exchangeConnectionId:connection.id,name:'free-bot',strategy:'VECTOR_PROFIT',configuration:{symbol:'BTC/USDT'}});
+    assert.equal(bot.status,201,JSON.stringify(bot.body));
+    const extraBot=await request(app).post('/api/bots').set('Authorization',`Bearer ${member.session.accessToken}`)
+      .send({exchangeConnectionId:connection.id,name:'extra-bot',strategy:'VECTOR_PROFIT',configuration:{symbol:'ETH/USDT'}});
+    assert.equal(extraBot.status,409,JSON.stringify(extraBot.body));assert.equal(extraBot.body.error.code,'QUOTA_EXCEEDED');
+    const start=await request(app).post(`/api/bots/${bot.body.id}/start`).set('Authorization',`Bearer ${member.session.accessToken}`)
+      .set('Idempotency-Key',`free-start-${suffix}`);
+    assert.equal(start.status,402,JSON.stringify(start.body));assert.equal(start.body.error.code,'ENTITLEMENT_REQUIRED');
+    const stop=await request(app).post(`/api/bots/${bot.body.id}/stop`).set('Authorization',`Bearer ${member.session.accessToken}`)
+      .set('Idempotency-Key',`free-stop-${suffix}`);
+    assert.equal(stop.status,202,JSON.stringify(stop.body));
+  });
+
+  it('invites a member and switches their workspace context', async () => {
+    await pool.query(`INSERT INTO subscriptions(organization_id,plan,status,current_period_end) VALUES($1,'PRO','ACTIVE',now()+interval '1 month')
+      ON CONFLICT(organization_id) DO UPDATE SET plan='PRO',status='ACTIVE',current_period_end=EXCLUDED.current_period_end`,[ownerOrganizationId]);
     const invitation = await request(app)
       .post('/api/organizations/invitations')
       .set('Authorization', `Bearer ${owner.session.accessToken}`)
@@ -121,6 +145,12 @@ describe('SaaS HTTP lifecycle', () => {
       .send({ organizationId: ownerOrganizationId });
     assert.equal(switched.status, 200, JSON.stringify(switched.body));
     switchedAccessToken = switched.body.accessToken;
+  });
+
+  it('reports the effective plan, entitlements and usage',async()=>{
+    const usage=await request(app).get('/api/billing/usage').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    assert.equal(usage.status,200,JSON.stringify(usage.body));assert.equal(usage.body.plan,'PRO');assert.equal(usage.body.entitlements.liveTrading,true);
+    assert.equal(usage.body.usage.members,2);assert.equal(usage.body.usage.monthlyBotCommands,0);assert.match(usage.body.periodStart,/T00:00:00\.000Z$/);
   });
 
   it('revokes workspace access immediately when membership is removed', async () => {

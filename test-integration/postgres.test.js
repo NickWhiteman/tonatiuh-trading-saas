@@ -23,13 +23,14 @@ describe('PostgreSQL migrations', () => {
       '009_postgres_rls.sql',
       '010_data_retention.sql',
       '011_email_delivery.sql',
+      '012_entitlements_usage.sql',
     ]);
   });
 
   it('creates the critical SaaS tables', async () => {
     const result = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'
-      AND table_name=ANY($1::text[])`, [['users','organizations','trading_bots','subscriptions','account_tokens','request_rate_limits','organization_invitations']]);
-    assert.equal(result.rowCount, 7);
+      AND table_name=ANY($1::text[])`, [['users','organizations','trading_bots','subscriptions','account_tokens','request_rate_limits','organization_invitations','organization_usage_monthly']]);
+    assert.equal(result.rowCount, 8);
   });
 });
 
@@ -69,4 +70,18 @@ describe('tenant database invariants', () => {
     await client.query("INSERT INTO bot_commands(organization_id,bot_id,command,idempotency_key) VALUES($1,$2,'START','same-key')", [org, bot]);
     await assert.rejects(client.query("INSERT INTO bot_commands(organization_id,bot_id,command,idempotency_key) VALUES($1,$2,'STOP','same-key')", [org, bot]), error => error.code === '23505');
   }));
+
+  it('isolates monthly usage rows for the API database role', async () => {
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const orgA=(await client.query("INSERT INTO organizations(name) VALUES('Usage RLS A') RETURNING id")).rows[0].id;
+      const orgB=(await client.query("INSERT INTO organizations(name) VALUES('Usage RLS B') RETURNING id")).rows[0].id;
+      await client.query("INSERT INTO organization_usage_monthly(organization_id,period_start,metric,quantity) VALUES($1,date_trunc('month',now())::date,'BOT_COMMANDS',1),($2,date_trunc('month',now())::date,'BOT_COMMANDS',2)",[orgA,orgB]);
+      await client.query('SET LOCAL ROLE tonatiuh_api');
+      await client.query("SELECT set_config('app.current_organization_id',$1,true)",[orgA]);
+      const visible=await client.query('SELECT organization_id,quantity FROM organization_usage_monthly');
+      assert.deepEqual(visible.rows,[{organization_id:orgA,quantity:'1'}]);
+    } finally { await client.query('ROLLBACK').catch(()=>undefined);client.release(); }
+  });
 });

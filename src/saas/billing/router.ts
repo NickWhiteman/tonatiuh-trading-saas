@@ -6,6 +6,8 @@ import { writeAuditEvent } from '../services/audit';
 import { getBillingConfig } from './config';
 import { createInitialPayment, getPayment, YooPayment } from './yookassa';
 import { runWithServiceDatabaseContext } from '../db/access-context';
+import { planCatalog } from '../entitlements/catalog';
+import { activePlan } from '../entitlements/service';
 
 export const billingRouter = Router();
 const billingAccess: RequestHandler = (req, _res, next) => {
@@ -20,8 +22,8 @@ const snapshot = (payment:YooPayment) => ({ id:payment.id,status:payment.status,
   paymentMethodSaved:payment.payment_method?.saved===true,metadata:payment.metadata });
 const kopecks = (value:string) => { if(!/^\d+\.\d{2}$/.test(value)) throw new SaasHttpError(400,'INVALID_PAYMENT','Invalid payment amount.'); return Number(value.replace('.','')); };
 
-billingRouter.get('/plans', (_req,res,next) => { try { const c=getBillingConfig(); res.json({items:[{id:'PRO',name:c.planName,
-  priceKopecks:c.priceKopecks,currency:'RUB',interval:'month'}]}); } catch(error){next(error);} });
+billingRouter.get('/plans', (_req,res,next) => { try { const c=getBillingConfig(); res.json({items:[{id:'FREE',name:'Free',priceKopecks:0,currency:'RUB',interval:'month',entitlements:planCatalog.FREE},{id:'PRO',name:c.planName,
+  priceKopecks:c.priceKopecks,currency:'RUB',interval:'month',entitlements:planCatalog.PRO}]}); } catch(error){next(error);} });
 
 billingRouter.post('/webhook',(req,_res,next)=>runWithServiceDatabaseContext(next), async (req,res,next) => {
   try {
@@ -64,6 +66,13 @@ billingRouter.use(authenticate,billingAccess);
 billingRouter.get('/subscription',async(req,res,next)=>{try{const auth=authContext(req);const result=await saasQuery(
   `SELECT plan,status,current_period_end,cancel_at_period_end,auto_renew,next_billing_at,(payment_method_id IS NOT NULL) payment_method_saved
    FROM subscriptions WHERE organization_id=$1`,[auth.organizationId]);res.json(result.rows[0]??{plan:'FREE',status:'INACTIVE',autoRenew:false});}catch(error){next(error);}});
+
+billingRouter.get('/usage',async(req,res,next)=>{try{const auth=authContext(req);const result=await saasTransaction(async client=>{const plan=await activePlan(client,auth.organizationId);const [exchanges,bots,members,commands]=await Promise.all([
+  client.query<{count:number}>('SELECT count(*)::int count FROM exchange_connections WHERE organization_id=$1',[auth.organizationId]),client.query<{count:number}>('SELECT count(*)::int count FROM trading_bots WHERE organization_id=$1',[auth.organizationId]),
+  client.query<{count:number}>('SELECT count(*)::int count FROM organization_memberships WHERE organization_id=$1',[auth.organizationId]),client.query<{quantity:string}>("SELECT quantity FROM organization_usage_monthly WHERE organization_id=$1 AND period_start=date_trunc('month',now())::date AND metric='BOT_COMMANDS'",[auth.organizationId])]);
+  const now=new Date();const periodStart=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString();
+  return{plan,entitlements:planCatalog[plan],usage:{exchangeConnections:exchanges.rows[0].count,bots:bots.rows[0].count,members:members.rows[0].count,monthlyBotCommands:Number(commands.rows[0]?.quantity??0)},periodStart};});res.json(result);
+}catch(error){next(error);}});
 
 billingRouter.post('/checkout',async(req,res,next)=>{try{
   const auth=authContext(req);

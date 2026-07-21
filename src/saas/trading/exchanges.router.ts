@@ -2,12 +2,13 @@ import ccxt, { Exchange } from 'ccxt';
 import { Router } from 'express';
 import { EncryptionService } from '../../plugins/EncryptionService/EncryptionService';
 import { optionalEnvConfig } from '../../plugins/Environment/environment';
-import { saasQuery } from '../db/pool';
+import { saasQuery, saasTransaction } from '../db/pool';
 import { authContext, requireRoles } from '../http/authorization';
 import { notFound, SaasHttpError } from '../http/errors';
 import { authenticate } from '../http/middleware';
 import { booleanValue, objectValue, optionalStringValue, stringValue, uuidValue } from '../http/validate';
 import { writeAuditEvent } from '../services/audit';
+import { enforceResourceQuota } from '../entitlements/service';
 
 export const exchangesRouter=Router();
 const supported=['okx','binance','bitget','kucoin','mexc','poloniex','gate','exmo','bybit'];
@@ -35,9 +36,9 @@ exchangesRouter.post('/',requireRoles('OWNER','ADMIN'),async(req,res,next)=>{try
   if(!supported.includes(exchange))throw new SaasHttpError(400,'UNSUPPORTED_EXCHANGE','Exchange is not supported.');
   const sandbox=body.sandbox===undefined?false:booleanValue(body.sandbox,'sandbox');const shouldVerify=body.verify===undefined?false:booleanValue(body.verify,'verify');const credentials=credentialsFrom(body);
   if(shouldVerify)await verify(exchange,credentials,sandbox);
-  const result=await saasQuery(`INSERT INTO exchange_connections(organization_id,exchange_code,label,credentials_ciphertext,encryption_key_id,sandbox,last_verified_at)
+  const result=await saasTransaction(async client=>{await enforceResourceQuota(client,auth.organizationId,'exchangeConnections');return client.query(`INSERT INTO exchange_connections(organization_id,exchange_code,label,credentials_ciphertext,encryption_key_id,sandbox,last_verified_at)
     VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $7 THEN now() END) RETURNING id,exchange_code,label,enabled,sandbox,last_verified_at,created_at`,
-    [auth.organizationId,exchange,stringValue(body.label,'label',100),encrypt(credentials),optionalEnvConfig('ENCRYPTION_KEY_ID')??'primary-v1',sandbox,shouldVerify]);
+    [auth.organizationId,exchange,stringValue(body.label,'label',100),encrypt(credentials),optionalEnvConfig('ENCRYPTION_KEY_ID')??'primary-v1',sandbox,shouldVerify]);});
   await writeAuditEvent(req,'EXCHANGE_CONNECTION_CREATED','exchange_connection',String(result.rows[0].id),{exchange,sandbox});res.status(201).json(result.rows[0]);
 }catch(error:unknown){const code=error&&typeof error==='object'&&'code'in error?error.code:undefined;next(code==='23505'?new SaasHttpError(409,'LABEL_EXISTS','Connection label already exists.'):error);}});
 

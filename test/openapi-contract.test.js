@@ -10,7 +10,7 @@ const expected = {
   '/api/auth/verify-email':['post'], '/api/auth/resend-verification':['post'], '/api/auth/forgot-password':['post'],
   '/api/auth/reset-password':['post'], '/api/auth/me':['delete','get'], '/api/billing/plans':['get'], '/api/billing/webhook':['post'],
   '/api/auth/cancel-deletion':['post'], '/api/auth/me/export':['get'],
-  '/api/billing/subscription':['get'], '/api/billing/checkout':['post'], '/api/billing/cancel':['post'], '/api/billing/resume':['post'],
+  '/api/billing/subscription':['get'], '/api/billing/usage':['get'], '/api/billing/checkout':['post'], '/api/billing/cancel':['post'], '/api/billing/resume':['post'],
   '/api/exchanges':['get','post'], '/api/exchanges/{id}':['patch'], '/api/exchanges/{id}/verify':['post'],
   '/api/organizations':['get'], '/api/organizations/switch':['post'], '/api/organizations/members':['get'],
   '/api/organizations/members/{userId}':['delete','patch'], '/api/organizations/invitations':['get','post'],

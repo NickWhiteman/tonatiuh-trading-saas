@@ -215,6 +215,13 @@ paths:
       responses:
         '200': {description: Organization subscription}
         default: {$ref: '#/components/responses/Error'}
+  /api/billing/usage:
+    get:
+      tags: [Billing]
+      operationId: getPlanUsage
+      responses:
+        '200': {description: "Effective plan, entitlements and current organization usage"}
+        default: {$ref: '#/components/responses/Error'}
   /api/billing/checkout:
     post:
       tags: [Billing]

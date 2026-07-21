@@ -10,6 +10,7 @@ import { objectValue, stringValue, uuidValue } from '../http/validate';
 import { writeAuditEvent } from '../services/audit';
 import { databaseRateLimit } from '../http/rate-limit';
 import { defaultEmailLocale } from '../email/delivery';
+import { enforceMemberQuota } from '../entitlements/service';
 
 export const organizationsRouter=Router();organizationsRouter.use(authenticate);
 const invitationRoles:Role[]=['ADMIN','TRADER','ANALYST','BILLING','VIEWER'];
@@ -44,6 +45,7 @@ organizationsRouter.get('/invitations',requireRoles('OWNER','ADMIN'),async(req,r
 organizationsRouter.post('/invitations',requireRoles('OWNER','ADMIN'),databaseRateLimit('member-invitations',20,3600),async(req,res,next)=>{try{const auth=authContext(req);const body=objectValue(req.body,['email','role']);const email=emailValue(body.email);const role=stringValue(body.role,'role',20) as Role;
   if(!invitationRoles.includes(role)||auth.role==='ADMIN'&&role==='ADMIN')throw new SaasHttpError(403,'INVALID_ROLE','Role cannot be invited.');const token=randomBytes(32).toString('base64url');const hash=createHash('sha256').update(token).digest('hex');
   const invitation=await saasTransaction(async(client)=>{const member=await client.query('SELECT 1 FROM organization_memberships m JOIN users u ON u.id=m.user_id WHERE m.organization_id=$1 AND u.email=$2',[auth.organizationId,email]);if(member.rowCount)throw new SaasHttpError(409,'ALREADY_MEMBER','User is already a member.');
+    const existing=await client.query('SELECT 1 FROM organization_invitations WHERE organization_id=$1 AND email=$2 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()',[auth.organizationId,email]);if(!existing.rowCount)await enforceMemberQuota(client,auth.organizationId);
     const result=await client.query(`INSERT INTO organization_invitations(organization_id,email,role,token_hash,invited_by,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '7 days')
       ON CONFLICT(organization_id,email) DO UPDATE SET role=EXCLUDED.role,token_hash=EXCLUDED.token_hash,invited_by=EXCLUDED.invited_by,expires_at=EXCLUDED.expires_at,accepted_at=NULL,revoked_at=NULL,created_at=now()
       RETURNING id,email,role,expires_at`,[auth.organizationId,email,role,hash,auth.userId]);const encrypted=new EncryptionService().encrypt(JSON.stringify({token}));
