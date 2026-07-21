@@ -21,6 +21,7 @@ const expected = {
   '/api/admin/stats':['get'], '/api/admin/users':['get'], '/api/admin/users/{id}/status':['patch'],
   '/api/admin/users/{id}/revoke-sessions':['post'], '/api/admin/organizations':['get'],
   '/api/admin/organizations/{id}/status':['patch'], '/api/admin/audit-events':['get'], '/api/admin/payments':['get'], '/api/admin/system':['get'],
+  '/api/email/provider-events':['post'], '/api/admin/email/dead-letters':['get'], '/api/admin/email/dead-letters/{id}/retry':['post'],
 };
 const publicOperations=new Set(['register','login','refreshSession','logout','verifyEmail','resendVerification','forgotPassword',
   'resetPassword','cancelAccountDeletion','listPlans','yookassaWebhook','liveness','readiness']);
@@ -34,6 +35,7 @@ describe('OpenAPI contract',()=>{
   it('has unique operation IDs and explicit public security overrides',async()=>{const api=await contract();const ids=[];
     for(const item of Object.values(api.paths))for(const operation of Object.values(item)){if(!operation?.operationId)continue;ids.push(operation.operationId);
       if(publicOperations.has(operation.operationId))assert.deepEqual(operation.security,[],`${operation.operationId} must be public`);
+      else if(operation.operationId==='emailProviderEvent')assert.deepEqual(operation.security,[{emailWebhookToken:[]}]);
       else if(operation.operationId==='prometheusMetrics')assert.deepEqual(operation.security,[{metricsToken:[]}]);
       else assert.deepEqual(operation.security??api.security,[{bearerAuth:[]}],`${operation.operationId} must require Bearer auth`);}
     assert.equal(new Set(ids).size,ids.length);});
@@ -41,6 +43,6 @@ describe('OpenAPI contract',()=>{
     for(const path of ['/api/billing/checkout','/api/bots/{id}/start','/api/bots/{id}/stop','/api/bots/{id}/restart']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const app=await readFile('src/app.ts','utf8');
-    for(const mount of ["'/api/auth'","'/api/billing'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/api/admin'","'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
+    for(const mount of ["'/api/auth'","'/api/billing'","'/api/email'","'/api/exchanges'","'/api/bots'","'/api/organizations'","'/api/admin'","'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
     const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
 });

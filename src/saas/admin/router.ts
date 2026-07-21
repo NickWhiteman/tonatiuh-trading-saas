@@ -51,3 +51,10 @@ adminRouter.get('/payments',async(req,res,next)=>{try{const{limit,offset}=pagina
 
 adminRouter.get('/system',async(_req,res,next)=>{try{const [bots,commands,email]=await Promise.all([saasQuery(`SELECT actual_state,count(*)::int count,max(heartbeat_at) last_heartbeat FROM trading_bots GROUP BY actual_state`),
   saasQuery(`SELECT status,count(*)::int count,min(created_at) oldest FROM bot_commands GROUP BY status`),saasQuery(`SELECT status,count(*)::int count,min(created_at) oldest FROM email_outbox GROUP BY status`)]);res.json({bots:bots.rows,commands:commands.rows,emailOutbox:email.rows});}catch(error){next(error);}});
+
+adminRouter.get('/email/dead-letters',async(req,res,next)=>{try{const{limit,offset}=pagination(req.query);const result=await saasQuery<{id:string;recipient:string;template:string;attempts:number;last_error:string;created_at:Date;last_attempt_at:Date}>(
+  `SELECT id,recipient,template,attempts,last_error,created_at,last_attempt_at FROM email_outbox WHERE status='DEAD_LETTER' ORDER BY last_attempt_at DESC NULLS LAST LIMIT $1 OFFSET $2`,[limit,offset]);
+  const items=result.rows.map(row=>({...row,recipient:row.recipient.replace(/^(.).+(@.+)$/,'$1***$2')}));res.json({items,limit,offset});}catch(error){next(error);}});
+
+adminRouter.post('/email/dead-letters/:id/retry',async(req,res,next)=>{try{const id=uuidValue(req.params.id,'id');const result=await saasQuery(`UPDATE email_outbox SET status='PENDING',attempts=0,next_attempt_at=now(),last_error=NULL
+  WHERE id=$1 AND status='DEAD_LETTER' RETURNING id`,[id]);if(!result.rowCount)throw notFound('Dead-letter email was not found.');await writeAuditEvent(req,'EMAIL_DEAD_LETTER_RETRIED','email_outbox',id);res.status(202).json({queued:true});}catch(error){next(error);}});

@@ -31,7 +31,8 @@ services:
       YOOKASSA_SECRET_KEY_FILE: /run/secrets/yookassa_secret_key
       SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       METRICS_TOKEN_FILE: /run/secrets/metrics_token
-    secrets: [api_database_url,jwt_secret,encryption_key,yookassa_secret_key,smtp_password,metrics_token]
+      EMAIL_WEBHOOK_TOKEN_FILE: /run/secrets/email_webhook_token
+    secrets: [api_database_url,jwt_secret,encryption_key,yookassa_secret_key,smtp_password,metrics_token,email_webhook_token]
     depends_on:
       migrate: {condition: service_completed_successfully}
     expose: ["3131"]
@@ -117,3 +118,4 @@ secrets:
   yookassa_secret_key: {external: true}
   smtp_password: {external: true}
   metrics_token: {external: true}
+  email_webhook_token: {external: true}

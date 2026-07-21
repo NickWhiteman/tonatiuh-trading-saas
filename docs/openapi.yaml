@@ -14,6 +14,7 @@ tags:
   - {name: Bots}
   - {name: Organizations}
   - {name: Platform Admin}
+  - {name: Email Delivery}
   - {name: Health}
 paths:
   /api/auth/register:
@@ -334,6 +335,16 @@ paths:
         '200': {description: Last 200 orders}
         default: {$ref: '#/components/responses/Error'}
 
+  /api/email/provider-events:
+    post:
+      tags: [Email Delivery]
+      operationId: emailProviderEvent
+      security: [{emailWebhookToken: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [eventId, messageId, type], properties: {eventId: {type: string, maxLength: 200}, messageId: {type: string, maxLength: 500}, type: {type: string, enum: [DELIVERED, HARD_BOUNCE, COMPLAINT]}}}}}
+      responses: {'202': {description: Provider event accepted idempotently}, default: {$ref: '#/components/responses/Error'}}
+
   /health/live:
     get:
       tags: [Health]
@@ -394,6 +405,18 @@ paths:
       tags: [Platform Admin]
       operationId: adminSystemStatus
       responses: {'200': {description: Worker and queue aggregates}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/email/dead-letters:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListEmailDeadLetters
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
+      responses: {'200': {description: Dead letters with masked recipients}, default: {$ref: '#/components/responses/Error'}}
+  /api/admin/email/dead-letters/{id}/retry:
+    post:
+      tags: [Platform Admin]
+      operationId: adminRetryEmailDeadLetter
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses: {'202': {description: Dead letter queued for retry}, default: {$ref: '#/components/responses/Error'}}
   /health/ready:
     get:
       tags: [Health]
@@ -416,6 +439,7 @@ components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
     metricsToken: {type: http, scheme: bearer, bearerFormat: opaque metrics token}
+    emailWebhookToken: {type: http, scheme: bearer, bearerFormat: opaque provider webhook token}
   parameters:
     ResourceId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
     UserId: {name: userId, in: path, required: true, schema: {type: string, format: uuid}}

@@ -36,6 +36,11 @@ groups:
         for: 10m
         labels: {severity: warning}
         annotations: {summary: "Email outbox is stalled",runbook: "docs/incidents/worker-queues.md"}
+      - alert: TonatiuhEmailDeadLetters
+        expr: tonatiuh_email_outbox{status="DEAD_LETTER"} > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Transactional emails require dead-letter review",runbook: "docs/incidents/email-delivery.md"}
       - alert: TonatiuhBillingFailures
         expr: tonatiuh_payments_last_hour{status="canceled"} > 5 or tonatiuh_subscriptions{status="PAST_DUE"} > 10
         for: 10m

@@ -22,6 +22,7 @@ describe('PostgreSQL migrations', () => {
       '008_platform_admin.sql',
       '009_postgres_rls.sql',
       '010_data_retention.sql',
+      '011_email_delivery.sql',
     ]);
   });
 

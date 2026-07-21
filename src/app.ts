@@ -13,6 +13,7 @@ import { metricsRouter, observeRequests } from './saas/observability/metrics';
 import { organizationsRouter } from './saas/organizations/router';
 import { botsRouter } from './saas/trading/bots.router';
 import { exchangesRouter } from './saas/trading/exchanges.router';
+import { emailEventsRouter } from './saas/email/router';
 
 export function createApp(mountAdditionalRoutes?: (app: Express) => void): Express {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp(mountAdditionalRoutes?: (app: Express) => void): Expre
   app.use('/metrics', metricsRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/billing', billingRouter);
+  app.use('/api/email',emailEventsRouter);
   app.use('/api/exchanges', exchangesRouter);
   app.use('/api/bots', botsRouter);
   app.use('/api/organizations', organizationsRouter);

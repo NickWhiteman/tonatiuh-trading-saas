@@ -9,6 +9,7 @@ import { authenticate } from '../http/middleware';
 import { objectValue, stringValue, uuidValue } from '../http/validate';
 import { writeAuditEvent } from '../services/audit';
 import { databaseRateLimit } from '../http/rate-limit';
+import { defaultEmailLocale } from '../email/delivery';
 
 export const organizationsRouter=Router();organizationsRouter.use(authenticate);
 const invitationRoles:Role[]=['ADMIN','TRADER','ANALYST','BILLING','VIEWER'];
@@ -46,7 +47,7 @@ organizationsRouter.post('/invitations',requireRoles('OWNER','ADMIN'),databaseRa
     const result=await client.query(`INSERT INTO organization_invitations(organization_id,email,role,token_hash,invited_by,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '7 days')
       ON CONFLICT(organization_id,email) DO UPDATE SET role=EXCLUDED.role,token_hash=EXCLUDED.token_hash,invited_by=EXCLUDED.invited_by,expires_at=EXCLUDED.expires_at,accepted_at=NULL,revoked_at=NULL,created_at=now()
       RETURNING id,email,role,expires_at`,[auth.organizationId,email,role,hash,auth.userId]);const encrypted=new EncryptionService().encrypt(JSON.stringify({token}));
-    await client.query("INSERT INTO email_outbox(recipient,template,encrypted_payload) VALUES($1,'INVITE_MEMBER',$2)",[email,encrypted]);return result.rows[0];});
+    await client.query("INSERT INTO email_outbox(recipient,template,encrypted_payload,locale) VALUES($1,'INVITE_MEMBER',$2,$3)",[email,encrypted,defaultEmailLocale()]);return result.rows[0];});
   await writeAuditEvent(req,'MEMBER_INVITED','invitation',String(invitation.id),{role});res.status(201).json(invitation);
 }catch(error){next(error);}});
 

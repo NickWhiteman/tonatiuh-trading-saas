@@ -4,8 +4,10 @@ const { randomUUID } = require('node:crypto');
 const { Pool } = require('pg');
 const request = require('supertest');
 
+process.env.EMAIL_WEBHOOK_TOKEN='integration-email-webhook-token';
 const { createApp } = require('../build/app');
 const { EncryptionService } = require('../build/plugins/EncryptionService/EncryptionService');
+const { emailHash } = require('../build/saas/email/delivery');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4, connectionTimeoutMillis: 5000 });
 const app = createApp();
@@ -14,7 +16,7 @@ const suffix = randomUUID();
 const password = 'Correct-Horse-Battery-Staple-42!';
 const ownerEmail = `http-owner-${suffix}@example.test`;
 const memberEmail = `http-member-${suffix}@example.test`;
-const state = { organizationIds: [], userIds: [] };
+const state = { organizationIds: [], userIds: [],eventIds:[] };
 
 async function outboxToken(email, template) {
   const result = await pool.query(
@@ -58,6 +60,8 @@ after(async () => {
   if (state.organizationIds.length) await pool.query('DELETE FROM organizations WHERE id=ANY($1::uuid[])', [state.organizationIds]);
   if (state.userIds.length) await pool.query('DELETE FROM users WHERE id=ANY($1::uuid[])', [state.userIds]);
   await pool.query('DELETE FROM email_outbox WHERE recipient=ANY($1::text[])', [[ownerEmail, memberEmail]]);
+  await pool.query('DELETE FROM email_provider_events WHERE event_id=ANY($1::text[])',[state.eventIds]);
+  await pool.query('DELETE FROM email_suppressions WHERE email_hash=ANY($1::text[])',[[emailHash(memberEmail)]]);
   await pool.end();
 });
 
@@ -161,5 +165,13 @@ describe('SaaS HTTP lifecycle', () => {
     const cancelled=await request(app).post('/api/auth/cancel-deletion').send({email:ownerEmail,password});
     assert.equal(cancelled.status,200,JSON.stringify(cancelled.body));assert.equal(cancelled.body.cancelled,true);
     const login=await request(app).post('/api/auth/login').send({email:ownerEmail,password});assert.equal(login.status,200,JSON.stringify(login.body));
+  });
+
+  it('processes provider events idempotently and suppresses bounced recipients',async()=>{const messageId=`provider-${suffix}`;const eventId=`bounce-${suffix}`;state.eventIds.push(eventId);
+    await pool.query(`INSERT INTO email_outbox(recipient,template,encrypted_payload,status,provider_message_id) VALUES($1,'VERIFY_EMAIL','test','SENT',$2)`,[memberEmail,messageId]);
+    const payload={eventId,messageId,type:'HARD_BOUNCE'};const first=await request(app).post('/api/email/provider-events').set('Authorization','Bearer integration-email-webhook-token').send(payload);
+    assert.equal(first.status,202,JSON.stringify(first.body));const replay=await request(app).post('/api/email/provider-events').set('Authorization','Bearer integration-email-webhook-token').send(payload);assert.equal(replay.status,202);
+    const outbox=await pool.query('SELECT status FROM email_outbox WHERE provider_message_id=$1',[messageId]);assert.equal(outbox.rows[0].status,'BOUNCED');
+    const suppression=await pool.query('SELECT reason FROM email_suppressions WHERE email_hash=$1',[emailHash(memberEmail)]);assert.equal(suppression.rows[0].reason,'HARD_BOUNCE');
   });
 });
