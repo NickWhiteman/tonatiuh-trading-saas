@@ -204,7 +204,7 @@ paths:
       security: []
       requestBody:
         required: true
-        content: {application/json: {schema: {type: object}}}
+        content: {application/json: {schema: {type: object, description: "Verified YooKassa payment or refund notification"}}}
       responses:
         '200': {description: Notification verified and processed}
         default: {$ref: '#/components/responses/Error'}
@@ -407,6 +407,21 @@ paths:
       operationId: adminListPayments
       parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
       responses: {'200': {description: Sanitized payment records}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/payments/{id}/refund:
+    post:
+      tags: [Platform Admin]
+      operationId: adminRefundPayment
+      parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 1, maxLength: 500}}}}}
+      responses: {'201': {description: Full refund succeeded}, '202': {description: Refund is pending reconciliation}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/refunds:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListRefunds
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
+      responses: {'200': {description: Refund records without provider snapshots}, default: {$ref: '#/components/responses/Error'}}
   /api/v1/admin/system:
     get:
       tags: [Platform Admin]

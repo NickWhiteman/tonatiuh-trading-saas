@@ -42,7 +42,7 @@ groups:
         labels: {severity: warning}
         annotations: {summary: "Transactional emails require dead-letter review",runbook: "docs/incidents/email-delivery.md"}
       - alert: TonatiuhBillingFailures
-        expr: tonatiuh_payments_last_hour{status="canceled"} > 5 or tonatiuh_subscriptions{status="PAST_DUE"} > 10
+        expr: tonatiuh_payments_last_hour{status="canceled"} > 5 or tonatiuh_subscriptions{status="PAST_DUE"} > 10 or tonatiuh_refunds{status="canceled"} > 0 or tonatiuh_billing_reconciliation_overdue > 0
         for: 10m
         labels: {severity: critical}
         annotations: {summary: "Billing failures exceed the operational threshold",runbook: "docs/incidents/billing.md"}

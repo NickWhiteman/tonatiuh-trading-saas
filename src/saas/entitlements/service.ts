@@ -4,7 +4,7 @@ import { Entitlements, PlanId, planCatalog } from './catalog';
 import { recordQuotaDenial } from '../observability/application-metrics';
 
 export async function activePlan(client:PoolClient,organizationId:string):Promise<PlanId>{const row=(await client.query<{plan:string}>(`SELECT plan FROM subscriptions
-  WHERE organization_id=$1 AND status='ACTIVE' AND current_period_end>now()`,[organizationId])).rows[0];return row?.plan==='PRO'?'PRO':'FREE';}
+  WHERE organization_id=$1 AND status IN ('ACTIVE','PAST_DUE') AND (current_period_end>now() OR grace_period_end>now())`,[organizationId])).rows[0];return row?.plan==='PRO'?'PRO':'FREE';}
 async function lock(client:PoolClient,organizationId:string,resource:string){await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`${organizationId}:${resource}`]);}
 const exceeded=(resource:string,plan:PlanId,limit:number,current:number)=>{recordQuotaDenial(resource,plan);return new SaasHttpError(409,'QUOTA_EXCEEDED',`${resource} quota is exceeded.`,{resource,plan,limit,current});};
 

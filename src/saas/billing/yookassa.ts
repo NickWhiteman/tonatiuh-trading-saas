@@ -3,7 +3,8 @@ import { getBillingConfig } from './config';
 
 export type YooPayment = { id: string; status: 'pending'|'waiting_for_capture'|'succeeded'|'canceled'; paid?: boolean;
   amount: { value: string; currency: string }; confirmation?: { type: string; confirmation_url?: string };
-  payment_method?: { id: string; saved?: boolean }; metadata?: Record<string,string> };
+  payment_method?: { id: string; saved?: boolean }; metadata?: Record<string,string>;cancellation_details?:{party?:string;reason?:string} };
+export type YooRefund={id:string;payment_id:string;status:'pending'|'succeeded'|'canceled';amount:{value:string;currency:string};cancellation_details?:{party?:string;reason?:string}};
 
 async function providerRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const config = getBillingConfig();
@@ -40,3 +41,6 @@ export function createRecurringPayment(input:{organizationId:string;email:string
     description:`${config.planName}: subscription renewal`,metadata:{organizationId:input.organizationId,kind:'RENEWAL'},receipt:receipt(input.email)})});
 }
 export function getPayment(id:string):Promise<YooPayment>{return providerRequest(`/payments/${encodeURIComponent(id)}`);}
+export function createRefund(input:{paymentId:string;amountKopecks:number;email:string;idempotencyKey:string;reason:string}):Promise<YooRefund>{return providerRequest('/refunds',{method:'POST',headers:{'Idempotence-Key':input.idempotencyKey},body:JSON.stringify({
+  payment_id:input.paymentId,amount:{value:(input.amountKopecks/100).toFixed(2),currency:'RUB'},description:input.reason,receipt:receipt(input.email)})});}
+export function getRefund(id:string):Promise<YooRefund>{return providerRequest(`/refunds/${encodeURIComponent(id)}`);}

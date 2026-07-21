@@ -6,6 +6,9 @@ import { SaasHttpError, notFound } from '../http/errors';
 import { saasQuery, saasTransaction } from '../db/pool';
 import { writeAuditEvent } from '../services/audit';
 import { requirePlatformAdmin } from './authorization';
+import { createRefund } from '../billing/yookassa';
+import { applyRefundLifecycle, refundSnapshot } from '../billing/lifecycle';
+import { getBillingConfig } from '../billing/config';
 
 export const adminRouter=Router();adminRouter.use(authenticate,requirePlatformAdmin);
 function pagination(query:Record<string,unknown>){const rawLimit=query.limit===undefined?50:Number(query.limit);const rawOffset=query.offset===undefined?0:Number(query.offset);
@@ -48,6 +51,20 @@ adminRouter.get('/audit-events',async(req,res,next)=>{try{const{limit,offset}=pa
 
 adminRouter.get('/payments',async(req,res,next)=>{try{const{limit,offset}=pagination(req.query);const result=await saasQuery(`SELECT id,organization_id,provider_payment_id,kind,status,amount_kopecks,currency,created_at,updated_at
   FROM billing_payments ORDER BY created_at DESC LIMIT $1 OFFSET $2`,[limit,offset]);res.json({items:result.rows,limit,offset});}catch(error){next(error);}});
+adminRouter.get('/refunds',async(req,res,next)=>{try{const{limit,offset}=pagination(req.query);const result=await saasQuery(`SELECT id,organization_id,provider_refund_id,provider_payment_id,status,amount_kopecks,currency,reason,requested_by,created_at,updated_at
+  FROM billing_refunds ORDER BY created_at DESC LIMIT $1 OFFSET $2`,[limit,offset]);res.json({items:result.rows,limit,offset});}catch(error){next(error);}});
+
+adminRouter.post('/payments/:id/refund',async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');const key=String(req.header('idempotency-key')??'').trim();if(!/^[A-Za-z0-9._:-]{8,128}$/.test(key))throw new SaasHttpError(400,'IDEMPOTENCY_KEY_REQUIRED','A valid Idempotency-Key header is required.');
+  const body=objectValue(req.body,['reason']);const reason=stringValue(body.reason,'reason',500);const reservation=await saasTransaction(async client=>{const payment=(await client.query(`SELECT p.organization_id,p.provider_payment_id,p.amount_kopecks,p.currency,u.email FROM billing_payments p JOIN organization_memberships m ON m.organization_id=p.organization_id AND m.role='OWNER'
+      JOIN users u ON u.id=m.user_id WHERE p.id=$1 AND p.status='succeeded' ORDER BY m.created_at LIMIT 1 FOR UPDATE OF p`,[id])).rows[0];if(!payment)throw notFound('Successful payment was not found.');
+    const existing=(await client.query(`SELECT r.id,r.organization_id,r.provider_payment_id,r.amount_kopecks,r.reason,u.email FROM billing_refunds r JOIN organization_memberships m ON m.organization_id=r.organization_id AND m.role='OWNER'
+      JOIN users u ON u.id=m.user_id WHERE r.organization_id=$1 AND r.idempotency_key=$2 ORDER BY m.created_at LIMIT 1`,[payment.organization_id,key])).rows[0];if(existing){if(existing.provider_payment_id!==payment.provider_payment_id)throw new SaasHttpError(409,'IDEMPOTENCY_KEY_REUSED','Idempotency key belongs to another payment.');return existing;}
+    const reserved=await client.query(`SELECT COALESCE(sum(amount_kopecks),0)::int total FROM billing_refunds WHERE provider_payment_id=$1 AND status IN ('requested','pending','succeeded')`,[payment.provider_payment_id]);if(Number(reserved.rows[0].total)>0)throw new SaasHttpError(409,'PAYMENT_ALREADY_REFUNDED','A full refund is already reserved or completed.');
+    const inserted=(await client.query(`INSERT INTO billing_refunds(organization_id,provider_payment_id,idempotency_key,status,amount_kopecks,currency,reason,requested_by) VALUES($1,$2,$3,'requested',$4,$5,$6,$7)
+      RETURNING id,organization_id,provider_payment_id,amount_kopecks,reason`,[payment.organization_id,payment.provider_payment_id,key,payment.amount_kopecks,payment.currency,reason,auth.userId])).rows[0];return{...inserted,email:payment.email};});
+  const refund=await createRefund({paymentId:reservation.provider_payment_id,amountKopecks:reservation.amount_kopecks,email:reservation.email,idempotencyKey:key,reason:reservation.reason});const config=getBillingConfig();await saasTransaction(async client=>{await client.query(`UPDATE billing_refunds SET provider_refund_id=$2,status=$3,provider_snapshot=$4,reconcile_after=CASE WHEN $3='pending' THEN now()+$6*interval '1 minute' END,updated_at=now() WHERE organization_id=$1 AND idempotency_key=$5`,
+    [reservation.organization_id,refund.id,refund.status,JSON.stringify(refundSnapshot(refund)),key,config.reconciliationMinutes]);await applyRefundLifecycle(client,refund);});await writeAuditEvent(req,'PAYMENT_REFUND_REQUESTED','payment',id,{refundId:refund.id,reason:reservation.reason});res.status(refund.status==='succeeded'?201:202).json({refundId:refund.id,status:refund.status});
+}catch(error){next(error);}});
 
 adminRouter.get('/system',async(_req,res,next)=>{try{const [bots,commands,email]=await Promise.all([saasQuery(`SELECT actual_state,count(*)::int count,max(heartbeat_at) last_heartbeat FROM trading_bots GROUP BY actual_state`),
   saasQuery(`SELECT status,count(*)::int count,min(created_at) oldest FROM bot_commands GROUP BY status`),saasQuery(`SELECT status,count(*)::int count,min(created_at) oldest FROM email_outbox GROUP BY status`)]);res.json({bots:bots.rows,commands:commands.rows,emailOutbox:email.rows});}catch(error){next(error);}});

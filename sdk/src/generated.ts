@@ -61,6 +61,8 @@ export interface Operations {
   adminChangeOrganizationStatus: { path: { id: string; }; query: never; headers: never; body: { status: "ACTIVE" | "SUSPENDED"; }; bodyRequired: true; response: unknown; };
   adminListAuditEvents: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminListPayments: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
+  adminRefundPayment: { path: { id: string; }; query: never; headers: { "Idempotency-Key": string; }; body: { reason: string; }; bodyRequired: true; response: unknown; };
+  adminListRefunds: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminSystemStatus: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminListEmailDeadLetters: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminRetryEmailDeadLetter: { path: { id: string; }; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
@@ -126,6 +128,8 @@ export const operations={
   adminChangeOrganizationStatus: {method:"PATCH",path:"/api/v1/admin/organizations/{id}/status"},
   adminListAuditEvents: {method:"GET",path:"/api/v1/admin/audit-events"},
   adminListPayments: {method:"GET",path:"/api/v1/admin/payments"},
+  adminRefundPayment: {method:"POST",path:"/api/v1/admin/payments/{id}/refund"},
+  adminListRefunds: {method:"GET",path:"/api/v1/admin/refunds"},
   adminSystemStatus: {method:"GET",path:"/api/v1/admin/system"},
   adminListEmailDeadLetters: {method:"GET",path:"/api/v1/admin/email/dead-letters"},
   adminRetryEmailDeadLetter: {method:"POST",path:"/api/v1/admin/email/dead-letters/{id}/retry"},

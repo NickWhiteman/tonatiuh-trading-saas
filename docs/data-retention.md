@@ -11,7 +11,7 @@ contracts and accounting rules applicable to the operating company.
 | Revoked or expired refresh sessions | 30 days |
 | Sent email outbox payloads | 30 days; failed messages 90 days |
 | Rate-limit buckets | until their configured expiry |
-| Full payment provider snapshots | 90 days, then minimized |
+| Full payment/refund provider snapshots and refund reasons | 90 days, then minimized |
 | Audit IP address and metadata | 400 days, then stripped |
 | Data-subject request evidence | 6 years, pseudonymous subject hash |
 
@@ -26,7 +26,7 @@ authenticated endpoints. `POST /api/v1/auth/cancel-deletion` requires email and
 password and restores access.
 
 After the deadline the retention worker removes PII, credentials, trading
-runtime data and payment methods. Minimal financial payment facts remain for
+runtime data and payment methods. Minimal financial payment and refund facts remain for
 legal reconciliation, with provider snapshots removed. Backups expire through
 the independently configured backup retention schedule; deleted data must not be
 selectively restored into production.

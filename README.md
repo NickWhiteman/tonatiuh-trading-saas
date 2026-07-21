@@ -63,6 +63,8 @@ admin privileges are independent from organization roles.
 Plan limits and downgrade behavior are documented in
 `docs/entitlements.md`. `GET /api/v1/billing/usage` returns the effective plan,
 current limits and organization usage to OWNER and BILLING roles.
+Renewal retries, grace periods, reconciliation and full-refund behavior are
+documented in `docs/billing-lifecycle.md`.
 
 ## PostgreSQL isolation
 

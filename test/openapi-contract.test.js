@@ -21,6 +21,7 @@ const unversionedExpected = {
   '/api/admin/stats':['get'], '/api/admin/users':['get'], '/api/admin/users/{id}/status':['patch'],
   '/api/admin/users/{id}/revoke-sessions':['post'], '/api/admin/organizations':['get'],
   '/api/admin/organizations/{id}/status':['patch'], '/api/admin/audit-events':['get'], '/api/admin/payments':['get'], '/api/admin/system':['get'],
+  '/api/admin/payments/{id}/refund':['post'], '/api/admin/refunds':['get'],
   '/api/email/provider-events':['post'], '/api/admin/email/dead-letters':['get'], '/api/admin/email/dead-letters/{id}/retry':['post'],
 };
 const expected=Object.fromEntries(Object.entries(unversionedExpected).map(([path,methods])=>[path.replace('/api/','/api/v1/'),methods]));
@@ -41,7 +42,7 @@ describe('OpenAPI contract',()=>{
       else assert.deepEqual(operation.security??api.security,[{bearerAuth:[]}],`${operation.operationId} must require Bearer auth`);}
     assert.equal(new Set(ids).size,ids.length);});
   it('requires idempotency keys for money and bot commands',async()=>{const api=await SwaggerParser.dereference(contractPath);
-    for(const path of ['/api/v1/billing/checkout','/api/v1/bots/{id}/start','/api/v1/bots/{id}/stop','/api/v1/bots/{id}/restart']){
+    for(const path of ['/api/v1/billing/checkout','/api/v1/bots/{id}/start','/api/v1/bots/{id}/stop','/api/v1/bots/{id}/restart','/api/v1/admin/payments/{id}/refund']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const app=await readFile('src/app.ts','utf8');
     for(const mount of ['app.use(API_V1_PREFIX,apiRouter)','app.use(LEGACY_API_PREFIX,legacyApiDeprecation,apiRouter)',"'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);

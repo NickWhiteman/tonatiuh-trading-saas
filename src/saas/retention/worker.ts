@@ -31,6 +31,7 @@ async function cleanup():Promise<void>{let anonymized=0;while(await anonymizeOne
     saasQuery("DELETE FROM email_outbox WHERE status IN ('SENT','DELIVERED','SUPPRESSED') AND COALESCE(sent_at,created_at)<now()-interval '30 days' OR status IN ('DEAD_LETTER','BOUNCED') AND created_at<now()-interval '90 days'"),
     saasQuery("DELETE FROM email_provider_events WHERE created_at<now()-interval '180 days'"),
     saasQuery("UPDATE billing_payments SET provider_snapshot='{}'::jsonb,updated_at=now() WHERE created_at<now()-interval '90 days' AND provider_snapshot<>'{}'::jsonb"),
+    saasQuery("UPDATE billing_refunds SET provider_snapshot='{}'::jsonb,reason='retained financial record',updated_at=now() WHERE created_at<now()-interval '90 days' AND (provider_snapshot<>'{}'::jsonb OR reason<>'retained financial record')"),
     saasQuery("UPDATE audit_events SET ip_address=NULL,metadata='{}'::jsonb WHERE created_at<now()-interval '400 days' AND (ip_address IS NOT NULL OR metadata<>'{}'::jsonb)"),
     saasQuery("DELETE FROM data_subject_requests WHERE requested_at<now()-interval '6 years'"),
   ]);logger.info({anonymized,affectedRows:results.map(result=>result.rowCount)},'data retention cycle completed');}

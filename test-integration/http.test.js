@@ -157,6 +157,11 @@ describe('SaaS HTTP lifecycle', () => {
     assert.equal(usage.body.usage.members,2);assert.equal(usage.body.usage.monthlyBotCommands,0);assert.match(usage.body.periodStart,/T00:00:00\.000Z$/);
   });
 
+  it('preserves PRO entitlements during the payment grace period',async()=>{await pool.query("UPDATE subscriptions SET status='PAST_DUE',current_period_end=now()-interval '1 day',grace_period_end=now()+interval '6 days' WHERE organization_id=$1",[ownerOrganizationId]);
+    const usage=await request(app).get(`${api}/billing/usage`).set('Authorization',`Bearer ${owner.session.accessToken}`);assert.equal(usage.status,200,JSON.stringify(usage.body));assert.equal(usage.body.plan,'PRO');
+    await pool.query("UPDATE subscriptions SET status='ACTIVE',current_period_end=now()+interval '1 month',grace_period_end=NULL WHERE organization_id=$1",[ownerOrganizationId]);
+  });
+
   it('revokes workspace access immediately when membership is removed', async () => {
     const removed = await request(app)
       .delete(`${api}/organizations/members/${member.registration.user.id}`)
