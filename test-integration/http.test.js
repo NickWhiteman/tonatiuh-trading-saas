@@ -31,6 +31,8 @@ async function registerVerifyAndLogin(email, displayName) {
     password,
     displayName,
     organizationName: `${displayName} workspace`,
+    acceptTerms: true,
+    acceptPrivacy: true,
   });
   assert.equal(registration.status, 201, JSON.stringify(registration.body));
   assert.equal(registration.body.verificationRequired, true);
@@ -147,5 +149,17 @@ describe('SaaS HTTP lifecycle', () => {
     } finally {
       await pool.query("UPDATE users SET platform_role='USER' WHERE id=$1", [owner.registration.user.id]);
     }
+  });
+
+  it('exports data and supports the account deletion recovery window',async()=>{
+    const exported=await request(app).get('/api/auth/me/export').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    assert.equal(exported.status,200,JSON.stringify(exported.body));assert.equal(exported.body.user.email,ownerEmail);assert.ok(Array.isArray(exported.body.memberships));
+    const scheduled=await request(app).delete('/api/auth/me').set('Authorization',`Bearer ${owner.session.accessToken}`).send({password});
+    assert.equal(scheduled.status,202,JSON.stringify(scheduled.body));assert.equal(scheduled.body.retentionDays,30);
+    const revoked=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${owner.session.accessToken}`);
+    assert.equal(revoked.status,401,JSON.stringify(revoked.body));assert.equal(revoked.body.error.code,'ACCOUNT_ACCESS_REVOKED');
+    const cancelled=await request(app).post('/api/auth/cancel-deletion').send({email:ownerEmail,password});
+    assert.equal(cancelled.status,200,JSON.stringify(cancelled.body));assert.equal(cancelled.body.cancelled,true);
+    const login=await request(app).post('/api/auth/login').send({email:ownerEmail,password});assert.equal(login.status,200,JSON.stringify(login.body));
   });
 });

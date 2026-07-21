@@ -26,6 +26,8 @@
     "worker:billing:dev": "npx ts-node src/saas/billing/renewals.ts",
     "worker:email": "node build/saas/email/worker.js",
     "worker:email:dev": "npx ts-node src/saas/email/worker.ts",
+    "worker:retention": "node build/saas/retention/worker.js",
+    "worker:retention:dev": "npx ts-node src/saas/retention/worker.ts",
     "test": "npm run build && node --test test/*.test.js",
     "test:integration": "node --test --test-concurrency=1 test-integration/*.test.js",
     "test:load": "node test-load/run.js",

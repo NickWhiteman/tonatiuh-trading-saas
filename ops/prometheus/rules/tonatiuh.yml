@@ -41,3 +41,8 @@ groups:
         for: 10m
         labels: {severity: critical}
         annotations: {summary: "Billing failures exceed the operational threshold",runbook: "docs/incidents/billing.md"}
+      - alert: TonatiuhRetentionWorkerStalled
+        expr: tonatiuh_overdue_account_deletions > 0
+        for: 30m
+        labels: {severity: critical}
+        annotations: {summary: "Scheduled account anonymization is overdue",runbook: "docs/incidents/worker-queues.md"}

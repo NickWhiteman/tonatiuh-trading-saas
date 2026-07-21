@@ -76,6 +76,17 @@ services:
     depends_on:
       migrate: {condition: service_completed_successfully}
 
+  retention-worker:
+    <<: *runtime
+    environment:
+      DATABASE_URL_FILE: /run/secrets/worker_database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets: [worker_database_url,jwt_secret]
+    command: ["node","build/saas/retention/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
   proxy:
     image: caddy:2.10.0-alpine
     environment: {DOMAIN: "${DOMAIN:?DOMAIN is required}",ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"}

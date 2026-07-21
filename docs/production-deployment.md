@@ -41,7 +41,7 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
    ```bash
    docker compose --env-file .env.production -f compose.production.yaml pull
    docker compose --env-file .env.production -f compose.production.yaml run --rm migrate
-   docker compose --env-file .env.production -f compose.production.yaml up -d api trading-worker billing-worker email-worker proxy
+   docker compose --env-file .env.production -f compose.production.yaml up -d api trading-worker billing-worker email-worker retention-worker proxy
    curl --fail --silent "https://$DOMAIN/health/ready"
    ```
 

@@ -21,6 +21,7 @@ describe('PostgreSQL migrations', () => {
       '007_organization_members.sql',
       '008_platform_admin.sql',
       '009_postgres_rls.sql',
+      '010_data_retention.sql',
     ]);
   });
 

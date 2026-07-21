@@ -8,7 +8,8 @@ const contractPath = 'docs/openapi.yaml';
 const expected = {
   '/api/auth/register':['post'], '/api/auth/login':['post'], '/api/auth/refresh':['post'], '/api/auth/logout':['post'],
   '/api/auth/verify-email':['post'], '/api/auth/resend-verification':['post'], '/api/auth/forgot-password':['post'],
-  '/api/auth/reset-password':['post'], '/api/auth/me':['get'], '/api/billing/plans':['get'], '/api/billing/webhook':['post'],
+  '/api/auth/reset-password':['post'], '/api/auth/me':['delete','get'], '/api/billing/plans':['get'], '/api/billing/webhook':['post'],
+  '/api/auth/cancel-deletion':['post'], '/api/auth/me/export':['get'],
   '/api/billing/subscription':['get'], '/api/billing/checkout':['post'], '/api/billing/cancel':['post'], '/api/billing/resume':['post'],
   '/api/exchanges':['get','post'], '/api/exchanges/{id}':['patch'], '/api/exchanges/{id}/verify':['post'],
   '/api/organizations':['get'], '/api/organizations/switch':['post'], '/api/organizations/members':['get'],
@@ -22,7 +23,7 @@ const expected = {
   '/api/admin/organizations/{id}/status':['patch'], '/api/admin/audit-events':['get'], '/api/admin/payments':['get'], '/api/admin/system':['get'],
 };
 const publicOperations=new Set(['register','login','refreshSession','logout','verifyEmail','resendVerification','forgotPassword',
-  'resetPassword','listPlans','yookassaWebhook','liveness','readiness']);
+  'resetPassword','cancelAccountDeletion','listPlans','yookassaWebhook','liveness','readiness']);
 
 async function contract(){return parse(await readFile(contractPath,'utf8'));}
 describe('OpenAPI contract',()=>{

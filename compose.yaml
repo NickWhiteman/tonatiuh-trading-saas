@@ -77,6 +77,19 @@ services:
       migrate: {condition: service_completed_successfully}
     init: true
     restart: unless-stopped
+  retention-worker:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      DATABASE_ROLE: tonatiuh_worker
+    command: ["node", "build/saas/retention/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    init: true
+    restart: unless-stopped
 volumes:
   postgres-data:
   bot-data:
