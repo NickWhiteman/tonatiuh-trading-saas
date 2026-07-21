@@ -30,6 +30,7 @@ services:
         required: false
     environment:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      DATABASE_ROLE: tonatiuh_api
     ports: ["3131:3131"]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -42,6 +43,7 @@ services:
         required: false
     environment:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      DATABASE_ROLE: tonatiuh_worker
       SAAS_BOT_DATA_DIR: /app/data
     command: ["node", "build/saas/worker.js"]
     volumes: [bot-data:/app/data]
@@ -56,6 +58,7 @@ services:
         required: false
     environment:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      DATABASE_ROLE: tonatiuh_worker
     command: ["node", "build/saas/billing/renewals.js"]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -68,6 +71,7 @@ services:
         required: false
     environment:
       DATABASE_URL: ${COMPOSE_DATABASE_URL:?COMPOSE_DATABASE_URL is required}
+      DATABASE_ROLE: tonatiuh_worker
     command: ["node", "build/saas/email/worker.js"]
     depends_on:
       migrate: {condition: service_completed_successfully}

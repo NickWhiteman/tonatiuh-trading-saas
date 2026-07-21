@@ -1,6 +1,9 @@
 import { createHash } from 'crypto';
 import { PoolClient } from 'pg';
 import { getSaasPool, saasQuery, saasTransaction } from '../db/pool';
+import { setProcessDatabaseScope } from '../db/access-context';
+
+setProcessDatabaseScope('worker');
 import { optionalEnvConfig } from '../../plugins/Environment/environment';
 import { getBillingConfig } from './config';
 import { createRecurringPayment } from './yookassa';

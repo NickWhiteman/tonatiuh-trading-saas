@@ -7,6 +7,9 @@ import { optionalEnvConfig } from '../plugins/Environment/environment';
 import { EncryptionService } from '../plugins/EncryptionService/EncryptionService';
 import { ConfigType, ExchangeType } from '../repository/types/types';
 import { getSaasPool, saasQuery, saasTransaction } from './db/pool';
+import { setProcessDatabaseScope } from './db/access-context';
+
+setProcessDatabaseScope('worker');
 
 type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' };
 type BotRow = {

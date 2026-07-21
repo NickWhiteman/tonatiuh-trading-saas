@@ -5,6 +5,7 @@ import { authenticate } from '../http/middleware';
 import { writeAuditEvent } from '../services/audit';
 import { getBillingConfig } from './config';
 import { createInitialPayment, getPayment, YooPayment } from './yookassa';
+import { runWithServiceDatabaseContext } from '../db/access-context';
 
 export const billingRouter = Router();
 const billingAccess: RequestHandler = (req, _res, next) => {
@@ -22,7 +23,7 @@ const kopecks = (value:string) => { if(!/^\d+\.\d{2}$/.test(value)) throw new Sa
 billingRouter.get('/plans', (_req,res,next) => { try { const c=getBillingConfig(); res.json({items:[{id:'PRO',name:c.planName,
   priceKopecks:c.priceKopecks,currency:'RUB',interval:'month'}]}); } catch(error){next(error);} });
 
-billingRouter.post('/webhook', async (req,res,next) => {
+billingRouter.post('/webhook',(req,_res,next)=>runWithServiceDatabaseContext(next), async (req,res,next) => {
   try {
     const event = req.body as { event?:unknown; object?:{id?:unknown} };
     if (!['payment.succeeded','payment.canceled'].includes(String(event.event))) throw new SaasHttpError(400,'INVALID_NOTIFICATION','Unsupported notification event.');

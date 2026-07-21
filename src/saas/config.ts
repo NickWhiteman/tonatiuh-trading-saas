@@ -5,6 +5,7 @@ export type SaasConfig = {
   databasePoolSize: number;
   databaseIdleTimeoutMs: number;
   databaseConnectionTimeoutMs: number;
+  databaseRole?: 'tonatiuh_api' | 'tonatiuh_worker';
   jwtSecret: string;
   jwtIssuer: string;
   jwtAudience: string;
@@ -33,11 +34,15 @@ export function getSaasConfig(): SaasConfig {
     throw new Error('JWT_SECRET must contain at least 32 bytes.');
   }
 
+  const databaseRole=optionalEnvConfig('DATABASE_ROLE');
+  if(databaseRole&&!['tonatiuh_api','tonatiuh_worker'].includes(databaseRole))throw new Error('DATABASE_ROLE must be tonatiuh_api or tonatiuh_worker.');
+
   cachedConfig = {
     databaseUrl,
     databasePoolSize: positiveInteger('DATABASE_POOL_SIZE', 20),
     databaseIdleTimeoutMs: positiveInteger('DATABASE_IDLE_TIMEOUT_MS', 30_000),
     databaseConnectionTimeoutMs: positiveInteger('DATABASE_CONNECTION_TIMEOUT_MS', 5_000),
+    databaseRole: databaseRole as SaasConfig['databaseRole'],
     jwtSecret,
     jwtIssuer: optionalEnvConfig('JWT_ISSUER') ?? 'tonatiuh-trading-saas',
     jwtAudience: optionalEnvConfig('JWT_AUDIENCE') ?? 'tonatiuh-trading-api',

@@ -54,3 +54,19 @@ unique operation IDs, and required idempotency headers.
 Bootstrap or revoke platform administration from a trusted shell after running
 migrations: `npm run admin:set-role -- user@example.com ADMIN|USER`. Platform
 admin privileges are independent from organization roles.
+
+## PostgreSQL isolation
+
+Migration `009_postgres_rls.sql` provisions three NOLOGIN roles. Run migrations
+with the database owner or a dedicated login that can create roles, then use
+`DATABASE_ROLE=tonatiuh_api` for the HTTP process and
+`DATABASE_ROLE=tonatiuh_worker` for background workers. The migration login must
+not be shared with runtime containers in production.
+
+Row Level Security is forced on exchange connections, bots, commands, sessions,
+orders, subscriptions, payments, and audit events. API requests set the tenant
+context inside each database transaction. Platform administration and trusted
+webhook/worker operations use explicit, narrowly scoped contexts. Production
+deployments should use separate login credentials for migration, API, and worker
+processes; `DATABASE_ROLE` is defense in depth and is not a replacement for
+separate credentials.

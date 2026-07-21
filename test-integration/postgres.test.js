@@ -8,7 +8,7 @@ after(async () => { await pool.end(); });
 
 async function rollbackTest(work) {
   const client = await pool.connect();
-  try { await client.query('BEGIN'); await work(client); }
+  try { await client.query('BEGIN'); await client.query("SELECT set_config('app.worker_access','true',true)"); await work(client); }
   finally { await client.query('ROLLBACK').catch(() => undefined); client.release(); }
 }
 
@@ -20,6 +20,7 @@ describe('PostgreSQL migrations', () => {
       '004_secure_billing.sql', '005_trading_api.sql', '006_account_security.sql',
       '007_organization_members.sql',
       '008_platform_admin.sql',
+      '009_postgres_rls.sql',
     ]);
   });
 
@@ -31,6 +32,23 @@ describe('PostgreSQL migrations', () => {
 });
 
 describe('tenant database invariants', () => {
+  it('isolates tenant rows for the API database role', async () => {
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const orgA=(await client.query("INSERT INTO organizations(name) VALUES('RLS A') RETURNING id")).rows[0].id;
+      const orgB=(await client.query("INSERT INTO organizations(name) VALUES('RLS B') RETURNING id")).rows[0].id;
+      await client.query(`INSERT INTO exchange_connections(organization_id,exchange_code,label,credentials_ciphertext,encryption_key_id)
+        VALUES($1,'okx','a','cipher','v1'),($2,'okx','b','cipher','v1')`,[orgA,orgB]);
+      await client.query('SET LOCAL ROLE tonatiuh_api');
+      await client.query("SELECT set_config('app.current_organization_id',$1,true)",[orgA]);
+      const visible=await client.query('SELECT organization_id FROM exchange_connections ORDER BY organization_id');
+      assert.deepEqual(visible.rows.map(row=>row.organization_id),[orgA]);
+      await assert.rejects(client.query(`INSERT INTO exchange_connections(organization_id,exchange_code,label,credentials_ciphertext,encryption_key_id)
+        VALUES($1,'okx','blocked','cipher','v1')`,[orgB]),error=>error.code==='42501');
+    } finally { await client.query('ROLLBACK').catch(()=>undefined);client.release(); }
+  });
+
   it('rejects a bot linked to another tenant exchange connection', async () => rollbackTest(async client => {
     const orgA = (await client.query("INSERT INTO organizations(name) VALUES('A') RETURNING id")).rows[0].id;
     const orgB = (await client.query("INSERT INTO organizations(name) VALUES('B') RETURNING id")).rows[0].id;
