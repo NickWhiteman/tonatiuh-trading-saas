@@ -7,6 +7,7 @@ import { objectValue, optionalStringValue, stringValue, uuidValue } from '../htt
 import { writeAuditEvent } from '../services/audit';
 import { tradingConfiguration } from './configuration';
 import { consumeBotCommand, enforceResourceQuota } from '../entitlements/service';
+import {requireCurrentLegalConsent} from '../compliance/service';
 
 export const botsRouter=Router();
 botsRouter.use(authenticate);
@@ -21,7 +22,7 @@ botsRouter.get('/:id',async(req,res,next)=>{try{const auth=authContext(req);cons
    e.id exchange_connection_id,e.label exchange_connection_label,e.exchange_code,e.sandbox FROM trading_bots b JOIN exchange_connections e ON e.id=b.exchange_connection_id
    WHERE b.id=$1 AND b.organization_id=$2`,[id,auth.organizationId]);if(!result.rows[0])throw notFound('Bot was not found.');res.json(result.rows[0]);}catch(error){next(error);}});
 
-botsRouter.post('/',requireRoles('OWNER','ADMIN','TRADER'),async(req,res,next)=>{try{const auth=authContext(req);
+botsRouter.post('/',requireRoles('OWNER','ADMIN','TRADER'),requireCurrentLegalConsent,async(req,res,next)=>{try{const auth=authContext(req);
   const body=objectValue(req.body,['exchangeConnectionId','name','strategy','configuration']);const connectionId=uuidValue(body.exchangeConnectionId,'exchangeConnectionId');
   const strategy=body.strategy===undefined?'VECTOR_PROFIT':stringValue(body.strategy,'strategy',40);
   if(strategy!=='VECTOR_PROFIT')throw new SaasHttpError(400,'UNSUPPORTED_STRATEGY','Strategy is not supported.');
@@ -31,7 +32,7 @@ botsRouter.post('/',requireRoles('OWNER','ADMIN','TRADER'),async(req,res,next)=>
   await writeAuditEvent(req,'BOT_CREATED','bot',String(result.rows[0].id));res.status(201).json(result.rows[0]);
 }catch(error:unknown){const code=error&&typeof error==='object'&&'code'in error?error.code:undefined;next(code==='23505'?new SaasHttpError(409,'BOT_NAME_EXISTS','Bot name already exists.'):error);}});
 
-botsRouter.patch('/:id',requireRoles('OWNER','ADMIN','TRADER'),async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
+botsRouter.patch('/:id',requireRoles('OWNER','ADMIN','TRADER'),requireCurrentLegalConsent,async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
   const body=objectValue(req.body,['name','configuration']);const current=(await saasQuery<{actual_state:string;configuration:Record<string,unknown>}>(
     'SELECT actual_state,configuration FROM trading_bots WHERE id=$1 AND organization_id=$2',[id,auth.organizationId])).rows[0];if(!current)throw notFound('Bot was not found.');
   if(!['STOPPED','FAILED'].includes(current.actual_state))throw new SaasHttpError(409,'BOT_NOT_EDITABLE','Stop the bot before editing it.');
@@ -41,7 +42,7 @@ botsRouter.patch('/:id',requireRoles('OWNER','ADMIN','TRADER'),async(req,res,nex
 }catch(error){next(error);}});
 
 for(const command of ['START','STOP','RESTART'] as const){botsRouter.post(`/:id/${command.toLowerCase()}`,
-  requireRoles('OWNER','ADMIN','TRADER'),async(req,res,next)=>{try{
+  requireRoles('OWNER','ADMIN','TRADER'),...(command==='STOP'?[]:[requireCurrentLegalConsent]),async(req,res,next)=>{try{
     const auth=authContext(req);const botId=uuidValue(req.params.id,'id');const key=String(req.header('idempotency-key')??'').trim();
     if(!/^[A-Za-z0-9._:-]{8,128}$/.test(key))throw new SaasHttpError(400,'IDEMPOTENCY_KEY_REQUIRED','A valid Idempotency-Key header is required.');
     const result=await saasTransaction(async(client)=>{const bot=(await client.query<{actual_state:string}>(

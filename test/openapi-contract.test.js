@@ -10,6 +10,7 @@ const unversionedExpected = {
   '/api/auth/verify-email':['post'], '/api/auth/resend-verification':['post'], '/api/auth/forgot-password':['post'],
   '/api/auth/reset-password':['post'], '/api/auth/me':['delete','get'], '/api/billing/plans':['get'], '/api/billing/webhook':['post'],
   '/api/auth/cancel-deletion':['post'], '/api/auth/me/export':['get'],
+  '/api/auth/me/data-requests':['get','post'], '/api/compliance/documents':['get'], '/api/compliance/consents':['get','post'],
   '/api/billing/subscription':['get'], '/api/billing/usage':['get'], '/api/billing/checkout':['post'], '/api/billing/cancel':['post'], '/api/billing/resume':['post'],
   '/api/exchanges':['get','post'], '/api/exchanges/{id}':['patch'], '/api/exchanges/{id}/verify':['post'],
   '/api/organizations':['get'], '/api/organizations/switch':['post'], '/api/organizations/members':['get'],
@@ -25,11 +26,12 @@ const unversionedExpected = {
   '/api/features':['get'], '/api/admin/feature-flags':['get'], '/api/admin/feature-flags/{key}':['patch'],
   '/api/admin/feature-flags/{key}/organizations':['get'],
   '/api/admin/feature-flags/{key}/organizations/{organizationId}':['delete','put'],
+  '/api/admin/data-subject-requests':['get'], '/api/admin/data-subject-requests/{id}':['patch'],
   '/api/email/provider-events':['post'], '/api/admin/email/dead-letters':['get'], '/api/admin/email/dead-letters/{id}/retry':['post'],
 };
 const expected=Object.fromEntries(Object.entries(unversionedExpected).map(([path,methods])=>[path.replace('/api/','/api/v1/'),methods]));
 const publicOperations=new Set(['register','login','refreshSession','logout','verifyEmail','resendVerification','forgotPassword',
-  'resetPassword','cancelAccountDeletion','listPlans','yookassaWebhook','liveness','readiness']);
+  'resetPassword','cancelAccountDeletion','listPlans','listLegalDocuments','yookassaWebhook','liveness','readiness']);
 
 async function contract(){return parse(await readFile(contractPath,'utf8'));}
 describe('OpenAPI contract',()=>{
@@ -49,6 +51,6 @@ describe('OpenAPI contract',()=>{
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const app=await readFile('src/app.ts','utf8');
     for(const mount of ['app.use(API_V1_PREFIX,apiRouter)','app.use(LEGACY_API_PREFIX,legacyApiDeprecation,apiRouter)',"'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
-    const router=await readFile('src/saas/api.ts','utf8');for(const mount of ["'/auth'","'/billing'","'/email'","'/exchanges'","'/bots'","'/organizations'","'/features'","'/admin'"])assert.ok(router.includes(mount),mount);
+    const router=await readFile('src/saas/api.ts','utf8');for(const mount of ["'/auth'","'/billing'","'/email'","'/exchanges'","'/bots'","'/organizations'","'/features'","'/compliance'","'/admin'"])assert.ok(router.includes(mount),mount);
     const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
 });

@@ -61,3 +61,8 @@ groups:
         for: 30m
         labels: {severity: critical}
         annotations: {summary: "No verified encrypted PostgreSQL backup completed within 26 hours",runbook: "docs/incidents/backups.md"}
+      - alert: TonatiuhDataSubjectRequestOverdue
+        expr: tonatiuh_overdue_data_subject_requests > 0
+        for: 30m
+        labels: {severity: critical}
+        annotations: {summary: "A data-subject request exceeded its response deadline",runbook: "docs/incidents/compliance.md"}

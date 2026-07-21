@@ -26,13 +26,14 @@ describe('PostgreSQL migrations', () => {
       '012_entitlements_usage.sql',
       '013_billing_lifecycle.sql',
       '014_feature_flags.sql',
+      '015_compliance_governance.sql',
     ]);
   });
 
   it('creates the critical SaaS tables', async () => {
     const result = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'
-      AND table_name=ANY($1::text[])`, [['users','organizations','trading_bots','subscriptions','account_tokens','request_rate_limits','organization_invitations','organization_usage_monthly','billing_refunds','feature_flags','feature_flag_overrides']]);
-    assert.equal(result.rowCount, 11);
+      AND table_name=ANY($1::text[])`, [['users','organizations','trading_bots','subscriptions','account_tokens','request_rate_limits','organization_invitations','organization_usage_monthly','billing_refunds','feature_flags','feature_flag_overrides','consent_events']]);
+    assert.equal(result.rowCount, 12);
   });
 });
 
@@ -90,9 +91,15 @@ describe('tenant database invariants', () => {
   it('isolates refund rows for the API database role',async()=>rollbackTest(async client=>{const orgA=(await client.query("INSERT INTO organizations(name) VALUES('Refund A') RETURNING id")).rows[0].id;const orgB=(await client.query("INSERT INTO organizations(name) VALUES('Refund B') RETURNING id")).rows[0].id;
     await client.query(`INSERT INTO billing_payments(organization_id,provider_payment_id,idempotency_key,kind,status,amount_kopecks,currency) VALUES($1,'pay-a','key-a','INITIAL','succeeded',100,'RUB'),($2,'pay-b','key-b','INITIAL','succeeded',100,'RUB')`,[orgA,orgB]);
     await client.query(`INSERT INTO billing_refunds(organization_id,provider_payment_id,idempotency_key,status,amount_kopecks,currency,reason) VALUES($1,'pay-a','refund-a','requested',100,'RUB','test'),($2,'pay-b','refund-b','requested',100,'RUB','test')`,[orgA,orgB]);
-    await client.query('SET LOCAL ROLE tonatiuh_api');await client.query("SELECT set_config('app.current_organization_id',$1,true)",[orgA]);const visible=await client.query('SELECT organization_id FROM billing_refunds');assert.deepEqual(visible.rows,[{organization_id:orgA}]);}));
+    await client.query('SET LOCAL ROLE tonatiuh_api');await client.query("SELECT set_config('app.worker_access','false',true)");await client.query("SELECT set_config('app.current_organization_id',$1,true)",[orgA]);const visible=await client.query('SELECT organization_id FROM billing_refunds');assert.deepEqual(visible.rows,[{organization_id:orgA}]);}));
 
   it('isolates feature flag overrides for the API database role',async()=>rollbackTest(async client=>{const orgA=(await client.query("INSERT INTO organizations(name) VALUES('Flag A') RETURNING id")).rows[0].id;const orgB=(await client.query("INSERT INTO organizations(name) VALUES('Flag B') RETURNING id")).rows[0].id;
-    await client.query("INSERT INTO feature_flag_overrides(flag_key,organization_id,enabled) VALUES('billing_checkout',$1,true),('billing_checkout',$2,false)",[orgA,orgB]);await client.query('SET LOCAL ROLE tonatiuh_api');await client.query("SELECT set_config('app.current_organization_id',$1,true)",[orgA]);
+    await client.query("INSERT INTO feature_flag_overrides(flag_key,organization_id,enabled) VALUES('billing_checkout',$1,true),('billing_checkout',$2,false)",[orgA,orgB]);await client.query('SET LOCAL ROLE tonatiuh_api');await client.query("SELECT set_config('app.worker_access','false',true)");await client.query("SELECT set_config('app.current_organization_id',$1,true)",[orgA]);
     const visible=await client.query('SELECT organization_id,enabled FROM feature_flag_overrides');assert.deepEqual(visible.rows,[{organization_id:orgA,enabled:true}]);}));
+
+  it('isolates immutable consent evidence by authenticated user',async()=>{const client=await pool.connect();try{await client.query('BEGIN');const first=(await client.query("INSERT INTO users(email,password_hash,display_name,status) VALUES('consent-a@example.test','hash','User A','ACTIVE') RETURNING id")).rows[0].id;const second=(await client.query("INSERT INTO users(email,password_hash,display_name,status) VALUES('consent-b@example.test','hash','User B','ACTIVE') RETURNING id")).rows[0].id;
+    for(const id of [first,second])await client.query(`INSERT INTO consent_events(user_id,subject_hash,document_type,document_version,document_url,document_sha256,source) VALUES($1,repeat('a',64),'TERMS','2026-01','https://example.test/terms',repeat('b',64),'REGISTRATION')`,[id]);
+    await client.query('SET LOCAL ROLE tonatiuh_api');await client.query("SELECT set_config('app.current_user_id',$1,true)",[first]);const visible=await client.query('SELECT user_id FROM consent_events');assert.deepEqual(visible.rows,[{user_id:first}]);
+    await assert.rejects(client.query("UPDATE consent_events SET document_url='https://example.test/changed' WHERE user_id=$1",[first]),error=>error.code==='42501'||error.code==='55000');
+  }finally{await client.query('ROLLBACK').catch(()=>undefined);client.release();}});
 });

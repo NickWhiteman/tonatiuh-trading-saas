@@ -32,7 +32,8 @@ services:
       SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       METRICS_TOKEN_FILE: /run/secrets/metrics_token
       EMAIL_WEBHOOK_TOKEN_FILE: /run/secrets/email_webhook_token
-    secrets: [api_database_url,jwt_secret,encryption_key,yookassa_secret_key,smtp_password,metrics_token,email_webhook_token]
+      CONSENT_EVIDENCE_SECRET_FILE: /run/secrets/consent_evidence_secret
+    secrets: [api_database_url,jwt_secret,encryption_key,yookassa_secret_key,smtp_password,metrics_token,email_webhook_token,consent_evidence_secret]
     depends_on:
       migrate: {condition: service_completed_successfully}
     expose: ["3131"]
@@ -146,3 +147,4 @@ secrets:
   email_webhook_token: {external: true}
   backup_database_url: {external: true}
   backup_age_recipient: {external: true}
+  consent_evidence_secret: {external: true}

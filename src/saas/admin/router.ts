@@ -51,6 +51,17 @@ adminRouter.get('/audit-events',async(req,res,next)=>{try{const{limit,offset}=pa
   const action=typeof req.query.action==='string'?stringValue(req.query.action,'action',100):null;const result=await saasQuery(`SELECT id,organization_id,actor_user_id,action,entity_type,entity_id,request_id,ip_address,metadata,created_at
     FROM audit_events WHERE ($1::uuid IS NULL OR organization_id=$1) AND ($2::text IS NULL OR action=$2) ORDER BY created_at DESC LIMIT $3 OFFSET $4`,[organizationId,action,limit,offset]);res.json({items:result.rows,limit,offset});}catch(error){next(error);}});
 
+adminRouter.get('/data-subject-requests',async(req,res,next)=>{try{const{limit,offset}=pagination(req.query);const status=typeof req.query.status==='string'?stringValue(req.query.status,'status',20):null;if(status&&!['REQUESTED','IN_PROGRESS','COMPLETED','REJECTED'].includes(status))throw new SaasHttpError(400,'INVALID_STATUS','Status is invalid.');
+  const result=await saasQuery(`SELECT r.id,r.user_id,r.kind,r.status,r.metadata,r.requested_at,r.due_at,r.completed_at,r.assigned_to,r.rejection_reason,r.updated_at,
+    (r.due_at<now() AND r.status IN ('REQUESTED','IN_PROGRESS')) overdue FROM data_subject_requests r WHERE ($1::text IS NULL OR r.status=$1) ORDER BY r.requested_at DESC LIMIT $2 OFFSET $3`,[status,limit,offset]);res.json({items:result.rows,limit,offset});
+}catch(error){next(error);}});
+
+adminRouter.patch('/data-subject-requests/:id',async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');const body=objectValue(req.body,['status','rejectionReason']);const status=stringValue(body.status,'status',20);if(!['IN_PROGRESS','COMPLETED','REJECTED'].includes(status))throw new SaasHttpError(400,'INVALID_STATUS','Status is invalid.');
+  const rejectionReason=status==='REJECTED'?stringValue(body.rejectionReason,'rejectionReason',1000):null;const result=await saasQuery(`UPDATE data_subject_requests SET status=$2,assigned_to=$3,rejection_reason=$4,completed_at=CASE WHEN $2 IN ('COMPLETED','REJECTED') THEN now() END,updated_at=now()
+    WHERE id=$1 AND status IN ('REQUESTED','IN_PROGRESS') RETURNING id,kind,status,requested_at,due_at,completed_at,assigned_to,rejection_reason,updated_at`,[id,status,auth.userId,rejectionReason]);if(!result.rowCount)throw new SaasHttpError(409,'DATA_REQUEST_NOT_ACTIONABLE','Data request was not found or is already final.');
+  await writeAuditEvent(req,'DATA_SUBJECT_REQUEST_STATUS_CHANGED','data_subject_request',id,{status});res.json(result.rows[0]);
+}catch(error){next(error);}});
+
 adminRouter.get('/feature-flags',async(_req,res,next)=>{try{const result=await saasQuery(`SELECT f.key,f.description,f.enabled,f.rollout_percentage,f.client_visible,f.version,f.updated_by,f.updated_at,
   count(o.organization_id)::int override_count FROM feature_flags f LEFT JOIN feature_flag_overrides o ON o.flag_key=f.key GROUP BY f.key ORDER BY f.key`);res.json({items:result.rows});}catch(error){next(error);}});
 

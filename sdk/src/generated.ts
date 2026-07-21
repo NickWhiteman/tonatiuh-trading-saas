@@ -3,7 +3,7 @@
 export type ErrorResponse = { error: { code: string; message: string; requestId: string; details?: unknown; }; };
 export type Session = { accessToken: string; refreshToken: string; expiresIn: number; };
 export type AssignableRole = "ADMIN" | "TRADER" | "ANALYST" | "BILLING" | "VIEWER";
-export type Register = { email: string; password: string; displayName: string; organizationName?: string; acceptTerms: boolean; acceptPrivacy: boolean; };
+export type Register = { email: string; password: string; displayName: string; organizationName?: string; acceptTerms: boolean; acceptPrivacy: boolean; termsVersion?: string; privacyVersion?: string; };
 export type Login = { email: string; password: string; };
 export type ExchangeConnectionInput = { exchange: "okx" | "binance" | "bitget" | "kucoin" | "mexc" | "poloniex" | "gate" | "exmo" | "bybit"; label: string; apiKey: string; secret: string; password?: string; sandbox?: boolean; verify?: boolean; };
 export type BotInput = { exchangeConnectionId: string; name: string; strategy?: "VECTOR_PROFIT"; configuration: TradingConfiguration; };
@@ -22,6 +22,11 @@ export interface Operations {
   currentAccount: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   scheduleAccountDeletion: { path: never; query: never; headers: never; body: { password: string; }; bodyRequired: true; response: unknown; };
   exportAccountData: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
+  listMyDataSubjectRequests: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
+  createDataSubjectRequest: { path: never; query: never; headers: never; body: { kind: "ACCESS" | "RECTIFY" | "RESTRICT" | "OBJECT"; details: string; }; bodyRequired: true; response: unknown; };
+  listLegalDocuments: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
+  listMyConsentEvents: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
+  acceptCurrentLegalDocuments: { path: never; query: never; headers: never; body: { acceptTerms: true; acceptPrivacy: true; termsVersion: string; privacyVersion: string; }; bodyRequired: true; response: unknown; };
   listPlans: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   listOrganizations: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   switchOrganization: { path: never; query: never; headers: never; body: { organizationId: string; }; bodyRequired: true; response: Session; };
@@ -61,6 +66,8 @@ export interface Operations {
   adminListOrganizations: { path: never; query: { limit?: number; offset?: number; search?: string; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminChangeOrganizationStatus: { path: { id: string; }; query: never; headers: never; body: { status: "ACTIVE" | "SUSPENDED"; }; bodyRequired: true; response: unknown; };
   adminListAuditEvents: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
+  adminListDataSubjectRequests: { path: never; query: { limit?: number; offset?: number; status?: "REQUESTED" | "IN_PROGRESS" | "COMPLETED" | "REJECTED"; }; headers: never; body: never; bodyRequired: false; response: unknown; };
+  adminUpdateDataSubjectRequest: { path: { id: string; }; query: never; headers: never; body: { status: "IN_PROGRESS" | "COMPLETED" | "REJECTED"; rejectionReason?: string; }; bodyRequired: true; response: unknown; };
   adminListFeatureFlags: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminUpdateFeatureFlag: { path: { key: string; }; query: never; headers: never; body: { enabled: boolean; rolloutPercentage: number; expectedVersion: number; changeReason: string; }; bodyRequired: true; response: unknown; };
   adminSetFeatureFlagOverride: { path: { key: string; organizationId: string; }; query: never; headers: never; body: { enabled: boolean; expectedVersion: number; changeReason: string; }; bodyRequired: true; response: unknown; };
@@ -95,6 +102,11 @@ export const operations={
   currentAccount: {method:"GET",path:"/api/v1/auth/me"},
   scheduleAccountDeletion: {method:"DELETE",path:"/api/v1/auth/me"},
   exportAccountData: {method:"GET",path:"/api/v1/auth/me/export"},
+  listMyDataSubjectRequests: {method:"GET",path:"/api/v1/auth/me/data-requests"},
+  createDataSubjectRequest: {method:"POST",path:"/api/v1/auth/me/data-requests"},
+  listLegalDocuments: {method:"GET",path:"/api/v1/compliance/documents"},
+  listMyConsentEvents: {method:"GET",path:"/api/v1/compliance/consents"},
+  acceptCurrentLegalDocuments: {method:"POST",path:"/api/v1/compliance/consents"},
   listPlans: {method:"GET",path:"/api/v1/billing/plans"},
   listOrganizations: {method:"GET",path:"/api/v1/organizations"},
   switchOrganization: {method:"POST",path:"/api/v1/organizations/switch"},
@@ -134,6 +146,8 @@ export const operations={
   adminListOrganizations: {method:"GET",path:"/api/v1/admin/organizations"},
   adminChangeOrganizationStatus: {method:"PATCH",path:"/api/v1/admin/organizations/{id}/status"},
   adminListAuditEvents: {method:"GET",path:"/api/v1/admin/audit-events"},
+  adminListDataSubjectRequests: {method:"GET",path:"/api/v1/admin/data-subject-requests"},
+  adminUpdateDataSubjectRequest: {method:"PATCH",path:"/api/v1/admin/data-subject-requests/{id}"},
   adminListFeatureFlags: {method:"GET",path:"/api/v1/admin/feature-flags"},
   adminUpdateFeatureFlag: {method:"PATCH",path:"/api/v1/admin/feature-flags/{key}"},
   adminSetFeatureFlagOverride: {method:"PUT",path:"/api/v1/admin/feature-flags/{key}/organizations/{organizationId}"},

@@ -7,6 +7,7 @@ import { organizationsRouter } from './organizations/router';
 import { botsRouter } from './trading/bots.router';
 import { exchangesRouter } from './trading/exchanges.router';
 import { featuresRouter } from './features/router';
+import { complianceRouter } from './compliance/router';
 
 export const apiRouter=Router();
 apiRouter.use('/auth',authRouter);
@@ -16,4 +17,5 @@ apiRouter.use('/exchanges',exchangesRouter);
 apiRouter.use('/bots',botsRouter);
 apiRouter.use('/organizations',organizationsRouter);
 apiRouter.use('/features',featuresRouter);
+apiRouter.use('/compliance',complianceRouter);
 apiRouter.use('/admin',adminRouter);

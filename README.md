@@ -6,6 +6,8 @@ Operational controls for deterministic staged releases and emergency kill
 switches are documented in [docs/feature-flags.md](docs/feature-flags.md).
 Backup, restore and regional recovery objectives are documented in
 [docs/disaster-recovery.md](docs/disaster-recovery.md).
+Consent evidence, data-subject workflows and review cadence are documented in
+[docs/compliance-governance.md](docs/compliance-governance.md).
 
 ## Development
 

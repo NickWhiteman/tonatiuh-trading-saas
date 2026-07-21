@@ -14,9 +14,11 @@ contracts and accounting rules applicable to the operating company.
 | Full payment/refund provider snapshots and refund reasons | 90 days, then minimized |
 | Audit IP address and metadata | 400 days, then stripped |
 | Data-subject request evidence | 6 years, pseudonymous subject hash |
+| Immutable legal-consent evidence | active account plus 6 years after anonymization |
 
-`GET /api/v1/auth/me/export` returns profile, consent, memberships and user audit
-actions. It intentionally excludes credential ciphertext, password/token hashes,
+`GET /api/v1/auth/me/export` returns profile, immutable consent evidence,
+data-subject requests, memberships and user audit actions. It intentionally
+excludes credential ciphertext, password/token hashes,
 payment methods, provider payloads and other workspace members' personal data.
 
 `DELETE /api/v1/auth/me` requires the current password. It rejects deletion while

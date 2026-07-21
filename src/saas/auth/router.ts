@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { Router } from 'express';
 import { getSaasConfig } from '../config';
 import { saasQuery, saasTransaction } from '../db/pool';
@@ -10,11 +10,14 @@ import { AccessPayload, createAccessToken, createRefreshToken, hashRefreshToken 
 import { hashAccountToken, queueAccountEmail } from '../security/account-tokens';
 import { databaseRateLimit } from '../http/rate-limit';
 import { runWithServiceDatabaseContext } from '../db/access-context';
+import {assertCurrentVersions, evidenceHash, recordLegalConsent} from '../compliance/service';
+import {getComplianceConfig} from '../compliance/config';
+import {authContext} from '../http/authorization';
 
 export const authRouter = Router();
 type AccountRow = { id: string; email: string; display_name: string; password_hash: string; status:string; organization_id: string; organization_name: string; role: AccessPayload['role'] };
 const dummyPasswordHash = 'scrypt$01010101010101010101010101010101$ffb601a03950e409b51a01307ea013f1294b4dd0d841f26a2105d4a31e825bea6c32a145a5a6c75963225d2bc95ac1dc5999f6c3f22dfe5c83cae2762e4b9f56';
-const subjectHash=(email:string)=>createHmac('sha256',getSaasConfig().jwtSecret).update(email.toLowerCase()).digest('hex');
+const subjectHash=(email:string)=>evidenceHash(email.toLowerCase(),getComplianceConfig().evidenceSecret);
 
 function emailValue(value: unknown): string {
   const email = stringValue(value, 'email', 320).toLowerCase();
@@ -35,15 +38,15 @@ export async function saveRefresh(userId: string, organizationId:string, token: 
   );
 }
 
-authRouter.post('/register',databaseRateLimit('register',5,3600), async (req, res, next) => {
+authRouter.post('/register',(req,_res,next)=>runWithServiceDatabaseContext(next),databaseRateLimit('register',5,3600), async (req, res, next) => {
   try {
-    const body = objectValue(req.body, ['email', 'password', 'displayName', 'organizationName','acceptTerms','acceptPrivacy']);
+    const body = objectValue(req.body, ['email', 'password', 'displayName', 'organizationName','acceptTerms','acceptPrivacy','termsVersion','privacyVersion']);
     const email = emailValue(body.email);
     const password = stringValue(body.password, 'password', 128);
     const displayName = stringValue(body.displayName, 'displayName', 120);
     const organizationName = body.organizationName === undefined ? `${displayName}'s workspace` : stringValue(body.organizationName, 'organizationName', 120);
     if(!booleanValue(body.acceptTerms,'acceptTerms')||!booleanValue(body.acceptPrivacy,'acceptPrivacy'))throw new SaasHttpError(400,'CONSENT_REQUIRED','Terms and privacy policy consent are required.');
-    const termsVersion=process.env.TERMS_VERSION??'2026-01';const privacyVersion=process.env.PRIVACY_VERSION??'2026-01';
+    assertCurrentVersions(body.termsVersion,body.privacyVersion);const compliance=getComplianceConfig();const termsVersion=compliance.documents.terms.version;const privacyVersion=compliance.documents.privacy.version;
     const result = await saasTransaction(async (client) => {
       const user = (await client.query<{ id: string; email: string; display_name: string }>(
         `INSERT INTO users(email,password_hash,display_name,status,terms_version,privacy_version,consented_at) VALUES($1,$2,$3,'PENDING',$4,$5,now()) RETURNING id,email,display_name`,
@@ -53,6 +56,7 @@ authRouter.post('/register',databaseRateLimit('register',5,3600), async (req, re
         'INSERT INTO organizations(name) VALUES ($1) RETURNING id, name', [organizationName],
       )).rows[0];
       await client.query(`INSERT INTO organization_memberships(organization_id, user_id, role) VALUES ($1, $2, 'OWNER')`, [organization.id, user.id]);
+      await recordLegalConsent(client,req,user,'REGISTRATION');
       await queueAccountEmail(client,{userId:user.id,email:user.email,kind:'VERIFY_EMAIL'});
       return { user, organization };
     });
@@ -162,7 +166,7 @@ authRouter.post('/logout', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-authRouter.post('/cancel-deletion',databaseRateLimit('cancel-deletion',5,3600),async(req,res,next)=>{try{const body=objectValue(req.body,['email','password']);const email=emailValue(body.email);const password=stringValue(body.password,'password',128);
+authRouter.post('/cancel-deletion',(req,_res,next)=>runWithServiceDatabaseContext(next),databaseRateLimit('cancel-deletion',5,3600),async(req,res,next)=>{try{const body=objectValue(req.body,['email','password']);const email=emailValue(body.email);const password=stringValue(body.password,'password',128);
   const account=(await saasQuery<{id:string;password_hash:string}>('SELECT id,password_hash FROM users WHERE email=$1 AND status=\'DELETION_PENDING\'',[email])).rows[0];
   if(!await verifyPassword(password,account?.password_hash??dummyPasswordHash)||!account)throw new SaasHttpError(401,'INVALID_CREDENTIALS','Invalid email or password.');
   await saasTransaction(async(client)=>{await client.query("UPDATE users SET status='ACTIVE',deletion_requested_at=NULL,scheduled_deletion_at=NULL,updated_at=now() WHERE id=$1",[account.id]);
@@ -184,14 +188,20 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-authRouter.get('/me/export',authenticate,(req,_res,next)=>runWithServiceDatabaseContext(next),async(req,res,next)=>{try{const auth=req.auth!;const user=(await saasQuery(`SELECT id,email,display_name,status,email_verified_at,terms_version,privacy_version,consented_at,created_at FROM users WHERE id=$1`,[auth.userId])).rows[0];
-  const [memberships,audit]=await Promise.all([saasQuery(`SELECT o.id organization_id,o.name,m.role,m.created_at FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id WHERE m.user_id=$1 ORDER BY m.created_at`,[auth.userId]),
-    saasQuery(`SELECT action,entity_type,entity_id,created_at FROM audit_events WHERE actor_user_id=$1 ORDER BY created_at DESC LIMIT 10000`,[auth.userId])]);
+authRouter.get('/me/export',authenticate,(req,_res,next)=>runWithServiceDatabaseContext(next),async(req,res,next)=>{try{const auth=authContext(req);const user=(await saasQuery(`SELECT id,email,display_name,status,email_verified_at,terms_version,privacy_version,consented_at,created_at FROM users WHERE id=$1`,[auth.userId])).rows[0];
+  const [memberships,audit,consents,requests]=await Promise.all([saasQuery(`SELECT o.id organization_id,o.name,m.role,m.created_at FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id WHERE m.user_id=$1 ORDER BY m.created_at`,[auth.userId]),
+    saasQuery(`SELECT action,entity_type,entity_id,created_at FROM audit_events WHERE actor_user_id=$1 ORDER BY created_at DESC LIMIT 10000`,[auth.userId]),saasQuery(`SELECT document_type,document_version,document_url,document_sha256,source,evidence_key_id,accepted_at FROM consent_events WHERE user_id=$1 ORDER BY accepted_at`,[auth.userId]),
+    saasQuery(`SELECT kind,status,requested_at,due_at,completed_at,rejection_reason FROM data_subject_requests WHERE user_id=$1 ORDER BY requested_at`,[auth.userId])]);
   await saasQuery("INSERT INTO data_subject_requests(user_id,subject_hash,kind,status,completed_at) VALUES($1,$2,'EXPORT','COMPLETED',now())",[auth.userId,subjectHash(String(user.email))]);
-  res.setHeader('Content-Disposition','attachment; filename="tonatiuh-account-export.json"');res.json({exportedAt:new Date().toISOString(),user,memberships:memberships.rows,auditEvents:audit.rows});
+  res.setHeader('Content-Disposition','attachment; filename="tonatiuh-account-export.json"');res.json({exportedAt:new Date().toISOString(),user,memberships:memberships.rows,consentEvents:consents.rows,dataSubjectRequests:requests.rows,auditEvents:audit.rows});
 }catch(error){next(error);}});
 
-authRouter.delete('/me',authenticate,databaseRateLimit('delete-account',3,86400),async(req,res,next)=>{try{const auth=req.auth!;const body=objectValue(req.body,['password']);const password=stringValue(body.password,'password',128);
+authRouter.get('/me/data-requests',authenticate,async(req,res,next)=>{try{const auth=authContext(req);const result=await saasQuery(`SELECT id,kind,status,requested_at,due_at,completed_at,rejection_reason,updated_at FROM data_subject_requests WHERE user_id=$1 ORDER BY requested_at DESC LIMIT 100`,[auth.userId]);res.json({items:result.rows});}catch(error){next(error);}});
+authRouter.post('/me/data-requests',authenticate,databaseRateLimit('data-subject-request',3,86400),async(req,res,next)=>{try{const auth=authContext(req);const body=objectValue(req.body,['kind','details']);const kind=stringValue(body.kind,'kind',20);if(!['ACCESS','RECTIFY','RESTRICT','OBJECT'].includes(kind))throw new SaasHttpError(400,'INVALID_DATA_REQUEST','Data request kind is invalid.');
+  const details=stringValue(body.details,'details',2000);const user=(await saasQuery<{email:string}>('SELECT email FROM users WHERE id=$1',[auth.userId])).rows[0];if(!user)throw notFound('User was not found.');const result=await saasQuery(`INSERT INTO data_subject_requests(user_id,subject_hash,kind,status,metadata) VALUES($1,$2,$3,'REQUESTED',$4) RETURNING id,kind,status,requested_at,due_at`,[auth.userId,subjectHash(user.email),kind,JSON.stringify({details})]);res.status(202).json(result.rows[0]);
+}catch(error){next(error);}});
+
+authRouter.delete('/me',authenticate,databaseRateLimit('delete-account',3,86400),async(req,res,next)=>{try{const auth=authContext(req);const body=objectValue(req.body,['password']);const password=stringValue(body.password,'password',128);
   const user=(await saasQuery<{email:string;password_hash:string;platform_role:string}>('SELECT email,password_hash,platform_role FROM users WHERE id=$1 AND status=\'ACTIVE\'',[auth.userId])).rows[0];
   if(!user||!await verifyPassword(password,user.password_hash))throw new SaasHttpError(401,'INVALID_CREDENTIALS','Invalid password.');
   if(user.platform_role==='ADMIN'){const admins=await saasQuery("SELECT 1 FROM users WHERE platform_role='ADMIN' AND status='ACTIVE' AND id<>$1 LIMIT 1",[auth.userId]);if(!admins.rowCount)throw new SaasHttpError(409,'LAST_PLATFORM_ADMIN','Assign another active platform administrator before deleting this account.');}

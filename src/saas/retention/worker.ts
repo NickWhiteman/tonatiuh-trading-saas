@@ -34,6 +34,7 @@ async function cleanup():Promise<void>{let anonymized=0;while(await anonymizeOne
     saasQuery("UPDATE billing_refunds SET provider_snapshot='{}'::jsonb,reason='retained financial record',updated_at=now() WHERE created_at<now()-interval '90 days' AND (provider_snapshot<>'{}'::jsonb OR reason<>'retained financial record')"),
     saasQuery("UPDATE audit_events SET ip_address=NULL,metadata='{}'::jsonb WHERE created_at<now()-interval '400 days' AND (ip_address IS NOT NULL OR metadata<>'{}'::jsonb)"),
     saasQuery("DELETE FROM data_subject_requests WHERE requested_at<now()-interval '6 years'"),
+    saasQuery("DELETE FROM consent_events e USING users u WHERE e.user_id=u.id AND u.status='DELETED' AND e.accepted_at<now()-interval '6 years'"),
   ]);logger.info({anonymized,affectedRows:results.map(result=>result.rowCount)},'data retention cycle completed');}
 
 async function main():Promise<void>{while(!stopping){const client=await getSaasPool().connect();try{const lock=await client.query<{locked:boolean}>("SELECT pg_try_advisory_lock(hashtext('tonatiuh-retention-worker')) locked");

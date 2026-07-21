@@ -9,6 +9,7 @@ import { authenticate } from '../http/middleware';
 import { booleanValue, objectValue, optionalStringValue, stringValue, uuidValue } from '../http/validate';
 import { writeAuditEvent } from '../services/audit';
 import { enforceResourceQuota } from '../entitlements/service';
+import {requireCurrentLegalConsent} from '../compliance/service';
 
 export const exchangesRouter=Router();
 const supported=['okx','binance','bitget','kucoin','mexc','poloniex','gate','exmo','bybit'];
@@ -31,7 +32,7 @@ exchangesRouter.get('/',async(req,res,next)=>{try{const auth=authContext(req);co
   `SELECT id,exchange_code,label,enabled,sandbox,last_verified_at,created_at,updated_at FROM exchange_connections
    WHERE organization_id=$1 ORDER BY created_at DESC`,[auth.organizationId]);res.json({items:result.rows});}catch(error){next(error);}});
 
-exchangesRouter.post('/',requireRoles('OWNER','ADMIN'),async(req,res,next)=>{try{const auth=authContext(req);const body=objectValue(req.body,
+exchangesRouter.post('/',requireRoles('OWNER','ADMIN'),requireCurrentLegalConsent,async(req,res,next)=>{try{const auth=authContext(req);const body=objectValue(req.body,
   ['exchange','label','apiKey','secret','password','sandbox','verify']);const exchange=stringValue(body.exchange,'exchange',30).toLowerCase();
   if(!supported.includes(exchange))throw new SaasHttpError(400,'UNSUPPORTED_EXCHANGE','Exchange is not supported.');
   const sandbox=body.sandbox===undefined?false:booleanValue(body.sandbox,'sandbox');const shouldVerify=body.verify===undefined?false:booleanValue(body.verify,'verify');const credentials=credentialsFrom(body);
@@ -42,7 +43,7 @@ exchangesRouter.post('/',requireRoles('OWNER','ADMIN'),async(req,res,next)=>{try
   await writeAuditEvent(req,'EXCHANGE_CONNECTION_CREATED','exchange_connection',String(result.rows[0].id),{exchange,sandbox});res.status(201).json(result.rows[0]);
 }catch(error:unknown){const code=error&&typeof error==='object'&&'code'in error?error.code:undefined;next(code==='23505'?new SaasHttpError(409,'LABEL_EXISTS','Connection label already exists.'):error);}});
 
-exchangesRouter.post('/:id/verify',requireRoles('OWNER','ADMIN'),async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
+exchangesRouter.post('/:id/verify',requireRoles('OWNER','ADMIN'),requireCurrentLegalConsent,async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
   const result=await saasQuery<{exchange_code:string;credentials_ciphertext:string;sandbox:boolean}>(
     'SELECT exchange_code,credentials_ciphertext,sandbox FROM exchange_connections WHERE id=$1 AND organization_id=$2',[id,auth.organizationId]);
   const row=result.rows[0];if(!row)throw notFound('Exchange connection was not found.');
@@ -50,7 +51,7 @@ exchangesRouter.post('/:id/verify',requireRoles('OWNER','ADMIN'),async(req,res,n
   await saasQuery('UPDATE exchange_connections SET last_verified_at=now(),updated_at=now() WHERE id=$1',[id]);await writeAuditEvent(req,'EXCHANGE_CONNECTION_VERIFIED','exchange_connection',id);res.json({verified:true});
 }catch(error){next(error);}});
 
-exchangesRouter.patch('/:id',requireRoles('OWNER','ADMIN'),async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
+exchangesRouter.patch('/:id',requireRoles('OWNER','ADMIN'),requireCurrentLegalConsent,async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
   const body=objectValue(req.body,['label','enabled','apiKey','secret','password']);const current=(await saasQuery<{credentials_ciphertext:string}>(
     'SELECT credentials_ciphertext FROM exchange_connections WHERE id=$1 AND organization_id=$2',[id,auth.organizationId])).rows[0];if(!current)throw notFound();
   const changesCredentials=body.apiKey!==undefined||body.secret!==undefined||body.password!==undefined;

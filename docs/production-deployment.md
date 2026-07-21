@@ -31,7 +31,10 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
 
 ## Release procedure
 
-1. Build, scan, sign, and publish an immutable image tag or digest in CI.
+1. Build, scan, sign, and publish an immutable image tag or digest in CI. For a
+   legal-document release, verify immutable HTTPS URLs and SHA-256 values using
+   the dual-review procedure in `docs/compliance-governance.md`; never deploy
+   placeholder digests.
 2. Confirm managed PITR is healthy and take a verified encrypted logical backup.
    Follow `docs/disaster-recovery.md`; an archive is not accepted until an
    isolated restore has passed integrity checks.

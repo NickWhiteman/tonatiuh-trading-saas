@@ -10,6 +10,7 @@ import { planCatalog } from '../entitlements/catalog';
 import { activePlan } from '../entitlements/service';
 import { applyPaymentLifecycle, applyRefundLifecycle, LocalPayment, paymentSnapshot, refundSnapshot } from './lifecycle';
 import { requireFeature } from '../features/service';
+import {requireCurrentLegalConsent} from '../compliance/service';
 
 export const billingRouter = Router();
 const billingAccess: RequestHandler = (req, _res, next) => {
@@ -65,7 +66,7 @@ billingRouter.get('/usage',async(req,res,next)=>{try{const auth=authContext(req)
   return{plan,entitlements:planCatalog[plan],usage:{exchangeConnections:exchanges.rows[0].count,bots:bots.rows[0].count,members:members.rows[0].count,monthlyBotCommands:Number(commands.rows[0]?.quantity??0)},periodStart};});res.json(result);
 }catch(error){next(error);}});
 
-billingRouter.post('/checkout',requireFeature('billing_checkout'),async(req,res,next)=>{try{
+billingRouter.post('/checkout',requireCurrentLegalConsent,requireFeature('billing_checkout'),async(req,res,next)=>{try{
   const auth=authContext(req);
   const idempotencyKey=String(req.header('idempotency-key')??'').trim();
   if(!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey))throw new SaasHttpError(400,'IDEMPOTENCY_KEY_REQUIRED','A valid Idempotency-Key header is required.');
@@ -84,7 +85,7 @@ billingRouter.post('/checkout',requireFeature('billing_checkout'),async(req,res,
 }catch(error){next(error);}});
 
 billingRouter.post('/cancel',async(req,res,next)=>{try{const auth=authContext(req);await saasQuery(`UPDATE subscriptions SET auto_renew=false,cancel_at_period_end=true,next_billing_at=NULL,updated_at=now() WHERE organization_id=$1`,[auth.organizationId]);await writeAuditEvent(req,'SUBSCRIPTION_CANCELLED','organization',auth.organizationId);res.json({ok:true});}catch(error){next(error);}});
-billingRouter.post('/resume',async(req,res,next)=>{try{const auth=authContext(req);const result=await saasQuery(`UPDATE subscriptions SET auto_renew=true,cancel_at_period_end=false,next_billing_at=current_period_end,updated_at=now()
+billingRouter.post('/resume',requireCurrentLegalConsent,async(req,res,next)=>{try{const auth=authContext(req);const result=await saasQuery(`UPDATE subscriptions SET auto_renew=true,cancel_at_period_end=false,next_billing_at=current_period_end,updated_at=now()
   WHERE organization_id=$1 AND payment_method_id IS NOT NULL AND current_period_end>now() RETURNING organization_id`,[auth.organizationId]);
   if(!result.rowCount)throw new SaasHttpError(409,'PAYMENT_METHOD_REQUIRED','An active subscription with a saved payment method is required.');
   await writeAuditEvent(req,'SUBSCRIPTION_RESUMED','organization',auth.organizationId);res.json({ok:true});}catch(error){next(error);}});

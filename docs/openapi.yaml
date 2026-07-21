@@ -14,6 +14,7 @@ tags:
   - {name: Bots}
   - {name: Organizations}
   - {name: Features}
+  - {name: Compliance}
   - {name: Platform Admin}
   - {name: Email Delivery}
   - {name: Health}
@@ -132,6 +133,37 @@ paths:
       responses:
         '200': {description: Portable account data export}
         default: {$ref: '#/components/responses/Error'}
+  /api/v1/auth/me/data-requests:
+    get:
+      tags: [Compliance]
+      operationId: listMyDataSubjectRequests
+      responses: {'200': {description: Current user data-subject requests}, default: {$ref: '#/components/responses/Error'}}
+    post:
+      tags: [Compliance]
+      operationId: createDataSubjectRequest
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [kind, details], properties: {kind: {type: string, enum: [ACCESS, RECTIFY, RESTRICT, OBJECT]}, details: {type: string, minLength: 1, maxLength: 2000}}}}}
+      responses: {'202': {description: Data-subject request accepted with a response deadline}, default: {$ref: '#/components/responses/Error'}}
+
+  /api/v1/compliance/documents:
+    get:
+      tags: [Compliance]
+      operationId: listLegalDocuments
+      security: []
+      responses: {'200': {description: Current immutable legal-document versions and SHA-256 digests}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/compliance/consents:
+    get:
+      tags: [Compliance]
+      operationId: listMyConsentEvents
+      responses: {'200': {description: Immutable legal-consent history}, default: {$ref: '#/components/responses/Error'}}
+    post:
+      tags: [Compliance]
+      operationId: acceptCurrentLegalDocuments
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [acceptTerms, acceptPrivacy, termsVersion, privacyVersion], properties: {acceptTerms: {type: boolean, const: true}, acceptPrivacy: {type: boolean, const: true}, termsVersion: {type: string, minLength: 1, maxLength: 100}, privacyVersion: {type: string, minLength: 1, maxLength: 100}}}}}
+      responses: {'200': {description: Current legal documents accepted}, '409': {description: Document version changed before acceptance}, default: {$ref: '#/components/responses/Error'}}
 
   /api/v1/billing/plans:
     get:
@@ -412,6 +444,21 @@ paths:
       operationId: adminListAuditEvents
       parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
       responses: {'200': {description: Platform audit events}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/data-subject-requests:
+    get:
+      tags: [Platform Admin, Compliance]
+      operationId: adminListDataSubjectRequests
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}, {name: status, in: query, schema: {type: string, enum: [REQUESTED, IN_PROGRESS, COMPLETED, REJECTED]}}]
+      responses: {'200': {description: Data-subject request queue and overdue state}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/data-subject-requests/{id}:
+    patch:
+      tags: [Platform Admin, Compliance]
+      operationId: adminUpdateDataSubjectRequest
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [status], properties: {status: {type: string, enum: [IN_PROGRESS, COMPLETED, REJECTED]}, rejectionReason: {type: string, minLength: 1, maxLength: 1000}}}}}
+      responses: {'200': {description: Data-subject request updated and audited}, '409': {description: Request is already final}, default: {$ref: '#/components/responses/Error'}}
   /api/v1/admin/feature-flags:
     get:
       tags: [Platform Admin]
@@ -575,7 +622,7 @@ components:
       type: object
       additionalProperties: false
       required: [email, password, displayName, acceptTerms, acceptPrivacy]
-      properties: {email: {type: string, format: email, maxLength: 320}, password: {type: string, format: password, minLength: 12, maxLength: 128}, displayName: {type: string, minLength: 2, maxLength: 120}, organizationName: {type: string, maxLength: 120}, acceptTerms: {type: boolean}, acceptPrivacy: {type: boolean}}
+      properties: {email: {type: string, format: email, maxLength: 320}, password: {type: string, format: password, minLength: 12, maxLength: 128}, displayName: {type: string, minLength: 2, maxLength: 120}, organizationName: {type: string, maxLength: 120}, acceptTerms: {type: boolean}, acceptPrivacy: {type: boolean}, termsVersion: {type: string, minLength: 1, maxLength: 100}, privacyVersion: {type: string, minLength: 1, maxLength: 100}}
     Login:
       type: object
       additionalProperties: false

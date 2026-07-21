@@ -17,7 +17,7 @@ const password = 'Correct-Horse-Battery-Staple-42!';
 const api='/api/v1';
 const ownerEmail = `http-owner-${suffix}@example.test`;
 const memberEmail = `http-member-${suffix}@example.test`;
-const state = { organizationIds: [], userIds: [],eventIds:[] };
+const state = { organizationIds: [], userIds: [],eventIds:[],dataRequestId:null };
 
 async function outboxToken(email, template) {
   const result = await pool.query(
@@ -58,6 +58,7 @@ async function registerVerifyAndLogin(email, displayName) {
 
 before(async () => { await pool.query('SELECT 1'); });
 after(async () => {
+  if(state.userIds.length){const client=await pool.connect();try{await client.query('BEGIN');await client.query("SELECT set_config('app.service_access','true',true)");await client.query('DELETE FROM consent_events WHERE user_id=ANY($1::uuid[])',[state.userIds]);await client.query('COMMIT');}catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}finally{client.release();}}
   if (state.organizationIds.length) await pool.query('DELETE FROM organizations WHERE id=ANY($1::uuid[])', [state.organizationIds]);
   if (state.userIds.length) await pool.query('DELETE FROM users WHERE id=ANY($1::uuid[])', [state.userIds]);
   await pool.query('DELETE FROM email_outbox WHERE recipient=ANY($1::text[])', [[ownerEmail, memberEmail]]);
@@ -82,6 +83,10 @@ describe('SaaS HTTP lifecycle', () => {
     const legacy=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${owner.session.accessToken}`);
     assert.equal(legacy.status,200,JSON.stringify(legacy.body));assert.equal(legacy.headers.deprecation,'@1784592000');
     assert.equal(legacy.headers.link,'</api/v1/auth/me>; rel="successor-version"');
+    const documents=await request(app).get(`${api}/compliance/documents`);assert.equal(documents.status,200,JSON.stringify(documents.body));assert.equal(documents.body.documents.length,2);
+    const consents=await request(app).get(`${api}/compliance/consents`).set('Authorization',`Bearer ${owner.session.accessToken}`);assert.equal(consents.status,200,JSON.stringify(consents.body));assert.equal(consents.body.items.length,2);
+    const dataRequest=await request(app).post(`${api}/auth/me/data-requests`).set('Authorization',`Bearer ${owner.session.accessToken}`).send({kind:'ACCESS',details:'Provide a copy of all personal data.'});
+    assert.equal(dataRequest.status,202,JSON.stringify(dataRequest.body));assert.equal(dataRequest.body.status,'REQUESTED');state.dataRequestId=dataRequest.body.id;
   });
 
   it('rotates refresh tokens and revokes the family on reuse', async () => {
@@ -97,6 +102,12 @@ describe('SaaS HTTP lifecycle', () => {
     assert.equal(revokedFamily.status, 401, JSON.stringify(revokedFamily.body));
     assert.equal(revokedFamily.body.error.code, 'REFRESH_TOKEN_REUSED');
   });
+
+  it('requires current legal consent only for new risky actions',async()=>{const previous=process.env.TERMS_VERSION;process.env.TERMS_VERSION='2026-02';try{const blocked=await request(app).post(`${api}/billing/checkout`).set('Authorization',`Bearer ${owner.session.accessToken}`).set('Idempotency-Key',`stale-consent-${suffix}`);
+    assert.equal(blocked.status,428,JSON.stringify(blocked.body));assert.equal(blocked.body.error.code,'LEGAL_CONSENT_REQUIRED');const accepted=await request(app).post(`${api}/compliance/consents`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+      .send({acceptTerms:true,acceptPrivacy:true,termsVersion:'2026-02',privacyVersion:process.env.PRIVACY_VERSION??'2026-01'});assert.equal(accepted.status,200,JSON.stringify(accepted.body));
+  }finally{previous===undefined?delete process.env.TERMS_VERSION:process.env.TERMS_VERSION=previous;const restoredTerms=previous??'2026-01';const restored=await request(app).post(`${api}/compliance/consents`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+    .send({acceptTerms:true,acceptPrivacy:true,termsVersion:restoredTerms,privacyVersion:process.env.PRIVACY_VERSION??'2026-01'});assert.equal(restored.status,200,JSON.stringify(restored.body));}});
 
   it('enforces the FREE connection quota under concurrent requests',async()=>{
     member = await registerVerifyAndLogin(memberEmail, 'HTTP Member');
@@ -189,6 +200,8 @@ describe('SaaS HTTP lifecycle', () => {
       assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
       assert.equal(typeof allowed.body.users, 'number');
       assert.equal(typeof allowed.body.organizations, 'number');
+      const dataRequests=await request(app).get(`${api}/admin/data-subject-requests?status=REQUESTED`).set('Authorization',`Bearer ${owner.session.accessToken}`);assert.equal(dataRequests.status,200,JSON.stringify(dataRequests.body));assert.ok(dataRequests.body.items.some(item=>item.id===state.dataRequestId));
+      const assigned=await request(app).patch(`${api}/admin/data-subject-requests/${state.dataRequestId}`).set('Authorization',`Bearer ${owner.session.accessToken}`).send({status:'IN_PROGRESS'});assert.equal(assigned.status,200,JSON.stringify(assigned.body));assert.equal(assigned.body.status,'IN_PROGRESS');
 
       const flags=await request(app).get(`${api}/admin/feature-flags`).set('Authorization',`Bearer ${owner.session.accessToken}`);
       assert.equal(flags.status,200,JSON.stringify(flags.body));const checkout=flags.body.items.find(item=>item.key==='billing_checkout');assert.ok(checkout);
