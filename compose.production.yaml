@@ -1,0 +1,108 @@
+x-runtime: &runtime
+  image: ${IMAGE_REPOSITORY:?IMAGE_REPOSITORY is required}:${IMAGE_TAG:?IMAGE_TAG is required}
+  env_file:
+    - path: .env.production
+      required: false
+  init: true
+  read_only: true
+  tmpfs: [/tmp:rw,noexec,nosuid,size=64m]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  restart: unless-stopped
+  networks: [backend,egress]
+
+services:
+  migrate:
+    <<: *runtime
+    restart: "no"
+    environment:
+      DATABASE_URL_FILE: /run/secrets/migration_database_url
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets: [migration_database_url,jwt_secret]
+    command: ["node","build/saas/migrate.js"]
+
+  api:
+    <<: *runtime
+    environment:
+      DATABASE_URL_FILE: /run/secrets/api_database_url
+      DATABASE_ROLE: tonatiuh_api
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      YOOKASSA_SECRET_KEY_FILE: /run/secrets/yookassa_secret_key
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      METRICS_TOKEN_FILE: /run/secrets/metrics_token
+    secrets: [api_database_url,jwt_secret,encryption_key,yookassa_secret_key,smtp_password,metrics_token]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    expose: ["3131"]
+
+  trading-worker:
+    <<: *runtime
+    environment:
+      DATABASE_URL_FILE: /run/secrets/worker_database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      SAAS_BOT_DATA_DIR: /app/data
+    secrets: [worker_database_url,jwt_secret,encryption_key]
+    command: ["node","build/saas/worker.js"]
+    volumes: [bot-data:/app/data]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  billing-worker:
+    <<: *runtime
+    environment:
+      DATABASE_URL_FILE: /run/secrets/worker_database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      YOOKASSA_SECRET_KEY_FILE: /run/secrets/yookassa_secret_key
+    secrets: [worker_database_url,jwt_secret,encryption_key,yookassa_secret_key]
+    command: ["node","build/saas/billing/renewals.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  email-worker:
+    <<: *runtime
+    environment:
+      DATABASE_URL_FILE: /run/secrets/worker_database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets: [worker_database_url,jwt_secret,encryption_key,smtp_password]
+    command: ["node","build/saas/email/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  proxy:
+    image: caddy:2.10.0-alpine
+    environment: {DOMAIN: "${DOMAIN:?DOMAIN is required}",ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"}
+    ports: ["80:80","443:443"]
+    volumes: [./ops/Caddyfile:/etc/caddy/Caddyfile:ro,caddy-data:/data,caddy-config:/config]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    depends_on: [api]
+    networks: [backend]
+    restart: unless-stopped
+
+networks:
+  backend: {internal: true}
+  egress: {}
+volumes:
+  bot-data:
+  caddy-data:
+  caddy-config:
+secrets:
+  migration_database_url: {external: true}
+  api_database_url: {external: true}
+  worker_database_url: {external: true}
+  jwt_secret: {external: true}
+  encryption_key: {external: true}
+  yookassa_secret_key: {external: true}
+  smtp_password: {external: true}
+  metrics_token: {external: true}
