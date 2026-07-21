@@ -31,6 +31,8 @@
     "test": "npm run build && npm run sdk:build && node --test test/*.test.js",
     "test:integration": "node --test --test-concurrency=1 test-integration/*.test.js",
     "test:load": "node test-load/run.js",
+    "release:check": "node scripts/check-production-readiness.js",
+    "release:smoke": "node scripts/production-smoke.js",
     "openapi:validate": "node --test test/openapi-contract.test.js",
     "openapi:compat": "node scripts/check-openapi-compatibility.js",
     "openapi:baseline": "node scripts/check-openapi-compatibility.js --write",

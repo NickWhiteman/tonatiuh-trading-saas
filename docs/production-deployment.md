@@ -31,6 +31,11 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
 
 ## Release procedure
 
+The authoritative go/no-go criteria are in
+`docs/production-launch-checklist.md`. A release must first pass
+`npm run release:check`; production Compose accepts digest-pinned
+`IMAGE_REFERENCE` and `POSTGRES_TOOLS_REFERENCE` values only.
+
 1. Build, scan, sign, and publish an immutable image tag or digest in CI. For a
    legal-document release, verify immutable HTTPS URLs and SHA-256 values using
    the dual-review procedure in `docs/compliance-governance.md`; never deploy
@@ -41,13 +46,14 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
 3. Review migrations. Schema changes must be backward-compatible expand steps;
    destructive contract steps happen only after old application versions are
    gone and backups have passed retention.
-4. Set `IMAGE_TAG` to the immutable candidate and run:
+4. Set `IMAGE_REFERENCE` to the immutable `repository@sha256:...` candidate and run:
 
    ```bash
    docker compose --env-file .env.production -f compose.production.yaml pull
    docker compose --env-file .env.production -f compose.production.yaml run --rm migrate
    docker compose --env-file .env.production -f compose.production.yaml up -d api trading-worker billing-worker email-worker retention-worker proxy
    curl --fail --silent "https://$DOMAIN/health/ready"
+   SMOKE_BASE_URL="https://$DOMAIN" npm run release:smoke
    ```
 
 5. Verify error rate, latency, worker heartbeat, queue depth, payment callbacks,

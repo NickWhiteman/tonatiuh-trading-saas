@@ -1,0 +1,10 @@
+'use strict';
+const {describe,it}=require('node:test');const assert=require('node:assert/strict');
+const {evaluateProductionReadiness}=require('../scripts/production-readiness');
+const digest=letter=>letter.repeat(64);
+const valid={ENV_RELEASE:'prod',APP_MODE:'web',DOMAIN:'api.tonatiuh.ru',PUBLIC_APP_URL:'https://app.tonatiuh.ru',TERMS_URL:'https://app.tonatiuh.ru/legal/terms/2026-07',PRIVACY_URL:'https://app.tonatiuh.ru/legal/privacy/2026-07',YOOKASSA_RETURN_URL:'https://app.tonatiuh.ru/billing/return',CORS_ORIGINS:'https://app.tonatiuh.ru',TERMS_SHA256:digest('a'),PRIVACY_SHA256:digest('b'),CONSENT_EVIDENCE_KEY_ID:'consent-2026-07',RELEASE_COMMIT_SHA:digest('c').slice(0,40),IMAGE_DIGEST:`sha256:${digest('d')}`,IMAGE_REFERENCE:`ghcr.io/tonatiuh/service@sha256:${digest('d')}`,POSTGRES_TOOLS_REFERENCE:`ghcr.io/tonatiuh/tools@sha256:${digest('f')}`,PREVIOUS_IMAGE_DIGEST:`sha256:${digest('e')}`,RESTORE_DRILL_AT:'2026-07-20T00:00:00.000Z',MIGRATION_REVIEWED_BY:'alice',SECURITY_REVIEWED_BY:'bob',ON_CALL_OWNER:'carol',CHANGE_TICKET_URL:'https://changes.tonatiuh.ru/42'};
+describe('production release gate',()=>{
+  it('accepts complete immutable and recently verified evidence',()=>{const report=evaluateProductionReadiness(valid,new Date('2026-07-22T00:00:00.000Z'));assert.equal(report.ready,true);assert.deepEqual(report.errors,[]);});
+  it('fails closed for placeholders, mutable artifacts and stale recovery proof',()=>{const report=evaluateProductionReadiness({...valid,DOMAIN:'api.example.com',IMAGE_DIGEST:'latest',PREVIOUS_IMAGE_DIGEST:'latest',TERMS_SHA256:'replace-with-digest',RESTORE_DRILL_AT:'2026-06-01T00:00:00.000Z'},new Date('2026-07-22T00:00:00.000Z'));assert.equal(report.ready,false);assert.match(report.errors.join('\n'),/placeholder|SHA-256|immutable|rollback|last 8 days/);});
+  it('never includes operational secrets in its report',()=>{const report=evaluateProductionReadiness({...valid,JWT_SECRET:'do-not-print',ENCRYPTION_KEY:'do-not-print'},new Date('2026-07-22T00:00:00.000Z'));assert.doesNotMatch(JSON.stringify(report),/do-not-print/);});
+});

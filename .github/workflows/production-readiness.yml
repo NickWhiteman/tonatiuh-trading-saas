@@ -1,0 +1,55 @@
+name: Production readiness
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit: {description: Full commit SHA, required: true, type: string}
+      image_digest: {description: Published application sha256 digest, required: true, type: string}
+      previous_image_digest: {description: Verified rollback image digest, required: true, type: string}
+      restore_drill_at: {description: Last successful restore drill ISO-8601, required: true, type: string}
+      migration_reviewer: {description: Migration reviewer, required: true, type: string}
+      security_reviewer: {description: Security reviewer, required: true, type: string}
+      on_call_owner: {description: On-call owner, required: true, type: string}
+      change_ticket_url: {description: Approved HTTPS change ticket, required: true, type: string}
+      smoke_base_url: {description: Production HTTPS origin, required: true, type: string}
+permissions: {contents: read,packages: read}
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.release_commit }}"}
+      - name: Verify checked-out commit
+        env: {EXPECTED_SHA: "${{ inputs.release_commit }}"}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with: {node-version: 22,cache: npm}
+      - run: npm ci
+      - run: npm test
+      - name: Evaluate production evidence
+        env:
+          ENV_RELEASE: prod
+          APP_MODE: web
+          DOMAIN: "${{ vars.DOMAIN }}"
+          PUBLIC_APP_URL: "${{ vars.PUBLIC_APP_URL }}"
+          CORS_ORIGINS: "${{ vars.CORS_ORIGINS }}"
+          TERMS_URL: "${{ vars.TERMS_URL }}"
+          PRIVACY_URL: "${{ vars.PRIVACY_URL }}"
+          YOOKASSA_RETURN_URL: "${{ vars.YOOKASSA_RETURN_URL }}"
+          TERMS_SHA256: "${{ vars.TERMS_SHA256 }}"
+          PRIVACY_SHA256: "${{ vars.PRIVACY_SHA256 }}"
+          CONSENT_EVIDENCE_KEY_ID: "${{ vars.CONSENT_EVIDENCE_KEY_ID }}"
+          RELEASE_COMMIT_SHA: "${{ inputs.release_commit }}"
+          IMAGE_DIGEST: "${{ inputs.image_digest }}"
+          IMAGE_REFERENCE: "${{ vars.IMAGE_REPOSITORY }}@${{ inputs.image_digest }}"
+          POSTGRES_TOOLS_REFERENCE: "${{ vars.POSTGRES_TOOLS_REFERENCE }}"
+          PREVIOUS_IMAGE_DIGEST: "${{ inputs.previous_image_digest }}"
+          RESTORE_DRILL_AT: "${{ inputs.restore_drill_at }}"
+          MIGRATION_REVIEWED_BY: "${{ inputs.migration_reviewer }}"
+          SECURITY_REVIEWED_BY: "${{ inputs.security_reviewer }}"
+          ON_CALL_OWNER: "${{ inputs.on_call_owner }}"
+          CHANGE_TICKET_URL: "${{ inputs.change_ticket_url }}"
+        run: npm run release:check
+      - name: Read-only production smoke test
+        env: {SMOKE_BASE_URL: "${{ inputs.smoke_base_url }}"}
+        run: npm run release:smoke

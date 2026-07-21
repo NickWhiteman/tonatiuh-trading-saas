@@ -88,3 +88,10 @@ webhook/worker operations use explicit, narrowly scoped contexts. Production
 deployments should use separate login credentials for migration, API, and worker
 processes; `DATABASE_ROLE` is defense in depth and is not a replacement for
 separate credentials.
+
+## Production launch
+
+Production Compose accepts application and backup-tool images pinned by digest.
+Run the fail-closed `npm run release:check` before rollout and the read-only
+`npm run release:smoke` after it. Required evidence, go/no-go conditions and
+rollback criteria are documented in `docs/production-launch-checklist.md`.
