@@ -9,6 +9,7 @@ import { runWithServiceDatabaseContext } from '../db/access-context';
 import { planCatalog } from '../entitlements/catalog';
 import { activePlan } from '../entitlements/service';
 import { applyPaymentLifecycle, applyRefundLifecycle, LocalPayment, paymentSnapshot, refundSnapshot } from './lifecycle';
+import { requireFeature } from '../features/service';
 
 export const billingRouter = Router();
 const billingAccess: RequestHandler = (req, _res, next) => {
@@ -64,7 +65,7 @@ billingRouter.get('/usage',async(req,res,next)=>{try{const auth=authContext(req)
   return{plan,entitlements:planCatalog[plan],usage:{exchangeConnections:exchanges.rows[0].count,bots:bots.rows[0].count,members:members.rows[0].count,monthlyBotCommands:Number(commands.rows[0]?.quantity??0)},periodStart};});res.json(result);
 }catch(error){next(error);}});
 
-billingRouter.post('/checkout',async(req,res,next)=>{try{
+billingRouter.post('/checkout',requireFeature('billing_checkout'),async(req,res,next)=>{try{
   const auth=authContext(req);
   const idempotencyKey=String(req.header('idempotency-key')??'').trim();
   if(!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey))throw new SaasHttpError(400,'IDEMPOTENCY_KEY_REQUIRED','A valid Idempotency-Key header is required.');

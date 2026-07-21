@@ -52,6 +52,7 @@ export interface Operations {
   listBotCommands: { path: { id: string; }; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   listBotOrders: { path: { id: string; }; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   emailProviderEvent: { path: never; query: never; headers: never; body: { eventId: string; messageId: string; type: "DELIVERED" | "HARD_BOUNCE" | "COMPLAINT"; }; bodyRequired: true; response: unknown; };
+  listFeatureDecisions: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: { features: { [key: string]: boolean; }; }; };
   liveness: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminStats: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminListUsers: { path: never; query: { limit?: number; offset?: number; search?: string; }; headers: never; body: never; bodyRequired: false; response: unknown; };
@@ -60,6 +61,11 @@ export interface Operations {
   adminListOrganizations: { path: never; query: { limit?: number; offset?: number; search?: string; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminChangeOrganizationStatus: { path: { id: string; }; query: never; headers: never; body: { status: "ACTIVE" | "SUSPENDED"; }; bodyRequired: true; response: unknown; };
   adminListAuditEvents: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
+  adminListFeatureFlags: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
+  adminUpdateFeatureFlag: { path: { key: string; }; query: never; headers: never; body: { enabled: boolean; rolloutPercentage: number; expectedVersion: number; changeReason: string; }; bodyRequired: true; response: unknown; };
+  adminSetFeatureFlagOverride: { path: { key: string; organizationId: string; }; query: never; headers: never; body: { enabled: boolean; expectedVersion: number; changeReason: string; }; bodyRequired: true; response: unknown; };
+  adminRemoveFeatureFlagOverride: { path: { key: string; organizationId: string; }; query: never; headers: never; body: { expectedVersion: number; changeReason: string; }; bodyRequired: true; response: unknown; };
+  adminListFeatureFlagOverrides: { path: { key: string; }; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminListPayments: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
   adminRefundPayment: { path: { id: string; }; query: never; headers: { "Idempotency-Key": string; }; body: { reason: string; }; bodyRequired: true; response: unknown; };
   adminListRefunds: { path: never; query: { limit?: number; offset?: number; }; headers: never; body: never; bodyRequired: false; response: unknown; };
@@ -119,6 +125,7 @@ export const operations={
   listBotCommands: {method:"GET",path:"/api/v1/bots/{id}/commands"},
   listBotOrders: {method:"GET",path:"/api/v1/bots/{id}/orders"},
   emailProviderEvent: {method:"POST",path:"/api/v1/email/provider-events"},
+  listFeatureDecisions: {method:"GET",path:"/api/v1/features"},
   liveness: {method:"GET",path:"/health/live"},
   adminStats: {method:"GET",path:"/api/v1/admin/stats"},
   adminListUsers: {method:"GET",path:"/api/v1/admin/users"},
@@ -127,6 +134,11 @@ export const operations={
   adminListOrganizations: {method:"GET",path:"/api/v1/admin/organizations"},
   adminChangeOrganizationStatus: {method:"PATCH",path:"/api/v1/admin/organizations/{id}/status"},
   adminListAuditEvents: {method:"GET",path:"/api/v1/admin/audit-events"},
+  adminListFeatureFlags: {method:"GET",path:"/api/v1/admin/feature-flags"},
+  adminUpdateFeatureFlag: {method:"PATCH",path:"/api/v1/admin/feature-flags/{key}"},
+  adminSetFeatureFlagOverride: {method:"PUT",path:"/api/v1/admin/feature-flags/{key}/organizations/{organizationId}"},
+  adminRemoveFeatureFlagOverride: {method:"DELETE",path:"/api/v1/admin/feature-flags/{key}/organizations/{organizationId}"},
+  adminListFeatureFlagOverrides: {method:"GET",path:"/api/v1/admin/feature-flags/{key}/organizations"},
   adminListPayments: {method:"GET",path:"/api/v1/admin/payments"},
   adminRefundPayment: {method:"POST",path:"/api/v1/admin/payments/{id}/refund"},
   adminListRefunds: {method:"GET",path:"/api/v1/admin/refunds"},

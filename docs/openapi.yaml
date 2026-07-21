@@ -13,6 +13,7 @@ tags:
   - {name: Exchanges}
   - {name: Bots}
   - {name: Organizations}
+  - {name: Features}
   - {name: Platform Admin}
   - {name: Email Delivery}
   - {name: Health}
@@ -352,6 +353,16 @@ paths:
         content: {application/json: {schema: {type: object, additionalProperties: false, required: [eventId, messageId, type], properties: {eventId: {type: string, maxLength: 200}, messageId: {type: string, maxLength: 500}, type: {type: string, enum: [DELIVERED, HARD_BOUNCE, COMPLAINT]}}}}}
       responses: {'202': {description: Provider event accepted idempotently}, default: {$ref: '#/components/responses/Error'}}
 
+  /api/v1/features:
+    get:
+      tags: [Features]
+      operationId: listFeatureDecisions
+      responses:
+        '200':
+          description: Client-visible effective feature decisions for the current organization
+          content: {application/json: {schema: {type: object, required: [features], properties: {features: {type: object, additionalProperties: {type: boolean}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+
   /health/live:
     get:
       tags: [Health]
@@ -401,6 +412,43 @@ paths:
       operationId: adminListAuditEvents
       parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
       responses: {'200': {description: Platform audit events}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/feature-flags:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListFeatureFlags
+      responses: {'200': {description: Feature flag configuration and override counts}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/feature-flags/{key}:
+    patch:
+      tags: [Platform Admin]
+      operationId: adminUpdateFeatureFlag
+      parameters: [{$ref: '#/components/parameters/FeatureFlagKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [enabled, rolloutPercentage, expectedVersion, changeReason], properties: {enabled: {type: boolean}, rolloutPercentage: {type: integer, minimum: 0, maximum: 100}, expectedVersion: {type: integer, minimum: 1}, changeReason: {type: string, minLength: 1, maxLength: 500}}}}}
+      responses: {'200': {description: Feature flag updated}, '409': {description: Optimistic locking conflict}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/feature-flags/{key}/organizations/{organizationId}:
+    put:
+      tags: [Platform Admin]
+      operationId: adminSetFeatureFlagOverride
+      parameters: [{$ref: '#/components/parameters/FeatureFlagKey'}, {$ref: '#/components/parameters/OrganizationId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [enabled, expectedVersion, changeReason], properties: {enabled: {type: boolean}, expectedVersion: {type: integer, minimum: 1}, changeReason: {type: string, minLength: 1, maxLength: 500}}}}}
+      responses: {'200': {description: Organization override set}, '409': {description: Optimistic locking conflict}, default: {$ref: '#/components/responses/Error'}}
+    delete:
+      tags: [Platform Admin]
+      operationId: adminRemoveFeatureFlagOverride
+      parameters: [{$ref: '#/components/parameters/FeatureFlagKey'}, {$ref: '#/components/parameters/OrganizationId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [expectedVersion, changeReason], properties: {expectedVersion: {type: integer, minimum: 1}, changeReason: {type: string, minLength: 1, maxLength: 500}}}}}
+      responses: {'200': {description: Organization override removed}, '409': {description: Optimistic locking conflict}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/admin/feature-flags/{key}/organizations:
+    get:
+      tags: [Platform Admin]
+      operationId: adminListFeatureFlagOverrides
+      parameters: [{$ref: '#/components/parameters/FeatureFlagKey'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
+      responses: {'200': {description: Organization overrides for a feature flag}, default: {$ref: '#/components/responses/Error'}}
   /api/v1/admin/payments:
     get:
       tags: [Platform Admin]
@@ -465,6 +513,8 @@ components:
   parameters:
     ResourceId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
     UserId: {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
+    OrganizationId: {name: organizationId, in: path, required: true, schema: {type: string, format: uuid}}
+    FeatureFlagKey: {name: key, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{2,63}$'}}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
     Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}

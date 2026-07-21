@@ -189,7 +189,26 @@ describe('SaaS HTTP lifecycle', () => {
       assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
       assert.equal(typeof allowed.body.users, 'number');
       assert.equal(typeof allowed.body.organizations, 'number');
+
+      const flags=await request(app).get(`${api}/admin/feature-flags`).set('Authorization',`Bearer ${owner.session.accessToken}`);
+      assert.equal(flags.status,200,JSON.stringify(flags.body));const checkout=flags.body.items.find(item=>item.key==='billing_checkout');assert.ok(checkout);
+      const staged=await request(app).patch(`${api}/admin/feature-flags/billing_checkout`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+        .send({enabled:true,rolloutPercentage:0,expectedVersion:checkout.version,changeReason:'integration rollout test'});assert.equal(staged.status,200,JSON.stringify(staged.body));
+      const conflict=await request(app).patch(`${api}/admin/feature-flags/billing_checkout`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+        .send({enabled:false,rolloutPercentage:0,expectedVersion:checkout.version,changeReason:'stale integration update'});assert.equal(conflict.status,409,JSON.stringify(conflict.body));assert.equal(conflict.body.error.code,'FEATURE_FLAG_VERSION_CONFLICT');
+      const disabled=await request(app).get(`${api}/features`).set('Authorization',`Bearer ${owner.session.accessToken}`);assert.equal(disabled.status,200);assert.equal(disabled.body.features.billing_checkout,false);
+      const blockedCheckout=await request(app).post(`${api}/billing/checkout`).set('Authorization',`Bearer ${owner.session.accessToken}`).set('Idempotency-Key',`flag-test-${suffix}`);
+      assert.equal(blockedCheckout.status,503,JSON.stringify(blockedCheckout.body));assert.equal(blockedCheckout.body.error.code,'FEATURE_DISABLED');assert.equal(blockedCheckout.headers['retry-after'],'300');
+      const override=await request(app).put(`${api}/admin/feature-flags/billing_checkout/organizations/${ownerOrganizationId}`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+        .send({enabled:true,expectedVersion:staged.body.version,changeReason:'integration override test'});assert.equal(override.status,200,JSON.stringify(override.body));
+      const enabled=await request(app).get(`${api}/features`).set('Authorization',`Bearer ${owner.session.accessToken}`);assert.equal(enabled.status,200);assert.equal(enabled.body.features.billing_checkout,true);
+      const removed=await request(app).delete(`${api}/admin/feature-flags/billing_checkout/organizations/${ownerOrganizationId}`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+        .send({expectedVersion:override.body.version,changeReason:'integration override cleanup'});assert.equal(removed.status,200,JSON.stringify(removed.body));
+      const restored=await request(app).patch(`${api}/admin/feature-flags/billing_checkout`).set('Authorization',`Bearer ${owner.session.accessToken}`)
+        .send({enabled:true,rolloutPercentage:100,expectedVersion:removed.body.version,changeReason:'integration rollout cleanup'});assert.equal(restored.status,200,JSON.stringify(restored.body));
     } finally {
+      await pool.query("DELETE FROM feature_flag_overrides WHERE flag_key='billing_checkout' AND organization_id=$1",[ownerOrganizationId]);
+      await pool.query("UPDATE feature_flags SET enabled=true,rollout_percentage=100 WHERE key='billing_checkout'");
       await pool.query("UPDATE users SET platform_role='USER' WHERE id=$1", [owner.registration.user.id]);
     }
   });

@@ -6,6 +6,7 @@ import { emailEventsRouter } from './email/router';
 import { organizationsRouter } from './organizations/router';
 import { botsRouter } from './trading/bots.router';
 import { exchangesRouter } from './trading/exchanges.router';
+import { featuresRouter } from './features/router';
 
 export const apiRouter=Router();
 apiRouter.use('/auth',authRouter);
@@ -14,4 +15,5 @@ apiRouter.use('/email',emailEventsRouter);
 apiRouter.use('/exchanges',exchangesRouter);
 apiRouter.use('/bots',botsRouter);
 apiRouter.use('/organizations',organizationsRouter);
+apiRouter.use('/features',featuresRouter);
 apiRouter.use('/admin',adminRouter);

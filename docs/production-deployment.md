@@ -46,7 +46,8 @@ service. Restrict ports 80/443 at the host firewall and keep PostgreSQL private.
    ```
 
 5. Verify error rate, latency, worker heartbeat, queue depth, payment callbacks,
-   and email delivery before completing the rollout.
+   and email delivery before completing the rollout. For flagged changes, use
+   the staged procedure and kill-switch rules in `docs/feature-flags.md`.
 
 Start the internal monitoring stack by merging the observability file:
 

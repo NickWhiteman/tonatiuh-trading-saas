@@ -883,6 +883,30 @@
         }
       }
     },
+    "listFeatureDecisions": {
+      "method": "get",
+      "path": "/api/v1/features",
+      "parameters": [],
+      "responses": {
+        "200": {
+          "type": "object",
+          "required": [
+            "features"
+          ],
+          "properties": {
+            "features": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
     "liveness": {
       "method": "get",
       "path": "/health/live",
@@ -1083,6 +1107,215 @@
       "method": "get",
       "path": "/api/v1/admin/audit-events",
       "parameters": [
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          }
+        },
+        {
+          "name": "offset",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          }
+        }
+      ],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListFeatureFlags": {
+      "method": "get",
+      "path": "/api/v1/admin/feature-flags",
+      "parameters": [],
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminUpdateFeatureFlag": {
+      "method": "patch",
+      "path": "/api/v1/admin/feature-flags/{key}",
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "rolloutPercentage",
+            "expectedVersion",
+            "changeReason"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "rolloutPercentage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "changeReason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminSetFeatureFlagOverride": {
+      "method": "put",
+      "path": "/api/v1/admin/feature-flags/{key}/organizations/{organizationId}",
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        {
+          "name": "organizationId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "expectedVersion",
+            "changeReason"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "changeReason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminRemoveFeatureFlagOverride": {
+      "method": "delete",
+      "path": "/api/v1/admin/feature-flags/{key}/organizations/{organizationId}",
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        {
+          "name": "organizationId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expectedVersion",
+            "changeReason"
+          ],
+          "properties": {
+            "expectedVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "changeReason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          }
+        }
+      },
+      "responses": {
+        "default": {
+          "$ref": "#/components/schemas/ErrorResponse"
+        }
+      }
+    },
+    "adminListFeatureFlagOverrides": {
+      "method": "get",
+      "path": "/api/v1/admin/feature-flags/{key}/organizations",
+      "parameters": [
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
         {
           "name": "limit",
           "in": "query",

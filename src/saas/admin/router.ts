@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../http/middleware';
 import { authContext } from '../http/authorization';
-import { objectValue, stringValue, uuidValue } from '../http/validate';
+import { booleanValue, numberValue, objectValue, stringValue, uuidValue } from '../http/validate';
 import { SaasHttpError, notFound } from '../http/errors';
 import { saasQuery, saasTransaction } from '../db/pool';
 import { writeAuditEvent } from '../services/audit';
@@ -14,6 +14,8 @@ export const adminRouter=Router();adminRouter.use(authenticate,requirePlatformAd
 function pagination(query:Record<string,unknown>){const rawLimit=query.limit===undefined?50:Number(query.limit);const rawOffset=query.offset===undefined?0:Number(query.offset);
   if(!Number.isInteger(rawLimit)||!Number.isInteger(rawOffset)||rawLimit<1||rawOffset<0)throw new SaasHttpError(400,'VALIDATION_ERROR','Pagination values must be positive integers.');
   return{limit:Math.min(100,rawLimit),offset:rawOffset};}
+function flagKey(value:unknown){const key=stringValue(value,'key',64);if(!/^[a-z][a-z0-9_]{2,63}$/.test(key))throw new SaasHttpError(400,'INVALID_FEATURE_FLAG','Feature flag key is invalid.');return key;}
+function expectedVersion(value:unknown){const version=numberValue(value,'expectedVersion',1,Number.MAX_SAFE_INTEGER);if(!Number.isInteger(version))throw new SaasHttpError(400,'VALIDATION_ERROR','expectedVersion must be an integer.');return version;}
 
 adminRouter.get('/stats',async(_req,res,next)=>{try{const [users,organizations,bots,subscriptions,pendingCommands,pendingEmail]=await Promise.all([
   saasQuery("SELECT count(*)::int count FROM users WHERE status<>'DELETED'"),saasQuery("SELECT count(*)::int count FROM organizations WHERE status<>'CLOSED'"),
@@ -48,6 +50,34 @@ adminRouter.patch('/organizations/:id/status',async(req,res,next)=>{try{const id
 adminRouter.get('/audit-events',async(req,res,next)=>{try{const{limit,offset}=pagination(req.query);const organizationId=typeof req.query.organizationId==='string'?uuidValue(req.query.organizationId,'organizationId'):null;
   const action=typeof req.query.action==='string'?stringValue(req.query.action,'action',100):null;const result=await saasQuery(`SELECT id,organization_id,actor_user_id,action,entity_type,entity_id,request_id,ip_address,metadata,created_at
     FROM audit_events WHERE ($1::uuid IS NULL OR organization_id=$1) AND ($2::text IS NULL OR action=$2) ORDER BY created_at DESC LIMIT $3 OFFSET $4`,[organizationId,action,limit,offset]);res.json({items:result.rows,limit,offset});}catch(error){next(error);}});
+
+adminRouter.get('/feature-flags',async(_req,res,next)=>{try{const result=await saasQuery(`SELECT f.key,f.description,f.enabled,f.rollout_percentage,f.client_visible,f.version,f.updated_by,f.updated_at,
+  count(o.organization_id)::int override_count FROM feature_flags f LEFT JOIN feature_flag_overrides o ON o.flag_key=f.key GROUP BY f.key ORDER BY f.key`);res.json({items:result.rows});}catch(error){next(error);}});
+
+adminRouter.patch('/feature-flags/:key',async(req,res,next)=>{try{const auth=authContext(req);const key=flagKey(req.params.key);const body=objectValue(req.body,['enabled','rolloutPercentage','expectedVersion','changeReason']);
+  const enabled=booleanValue(body.enabled,'enabled');const percentage=numberValue(body.rolloutPercentage,'rolloutPercentage',0,100);if(!Number.isInteger(percentage))throw new SaasHttpError(400,'VALIDATION_ERROR','rolloutPercentage must be an integer.');
+  const version=expectedVersion(body.expectedVersion);const reason=stringValue(body.changeReason,'changeReason',500);const updated=await saasQuery(`UPDATE feature_flags SET enabled=$2,rollout_percentage=$3,version=version+1,updated_by=$4,updated_at=now()
+    WHERE key=$1 AND version=$5 RETURNING key,description,enabled,rollout_percentage,client_visible,version,updated_at`,[key,enabled,percentage,auth.userId,version]);if(!updated.rowCount){const exists=await saasQuery('SELECT 1 FROM feature_flags WHERE key=$1',[key]);if(!exists.rowCount)throw notFound('Feature flag was not found.');throw new SaasHttpError(409,'FEATURE_FLAG_VERSION_CONFLICT','Feature flag was changed by another administrator.');}
+  await writeAuditEvent(req,'FEATURE_FLAG_CHANGED','feature_flag',key,{enabled,rolloutPercentage:percentage,previousVersion:version,changeReason:reason});res.json(updated.rows[0]);
+}catch(error){next(error);}});
+
+adminRouter.get('/feature-flags/:key/organizations',async(req,res,next)=>{try{const key=flagKey(req.params.key);const{limit,offset}=pagination(req.query);const exists=await saasQuery('SELECT 1 FROM feature_flags WHERE key=$1',[key]);if(!exists.rowCount)throw notFound('Feature flag was not found.');
+  const result=await saasQuery(`SELECT o.organization_id,g.name organization_name,o.enabled,o.updated_by,o.updated_at FROM feature_flag_overrides o JOIN organizations g ON g.id=o.organization_id
+    WHERE o.flag_key=$1 ORDER BY o.updated_at DESC LIMIT $2 OFFSET $3`,[key,limit,offset]);res.json({items:result.rows,limit,offset});
+}catch(error){next(error);}});
+
+adminRouter.put('/feature-flags/:key/organizations/:organizationId',async(req,res,next)=>{try{const auth=authContext(req);const key=flagKey(req.params.key);const organizationId=uuidValue(req.params.organizationId,'organizationId');const body=objectValue(req.body,['enabled','expectedVersion','changeReason']);
+  const enabled=booleanValue(body.enabled,'enabled');const version=expectedVersion(body.expectedVersion);const reason=stringValue(body.changeReason,'changeReason',500);await saasTransaction(async client=>{const flag=await client.query('UPDATE feature_flags SET version=version+1,updated_by=$3,updated_at=now() WHERE key=$1 AND version=$2 RETURNING key',[key,version,auth.userId]);
+    if(!flag.rowCount)throw new SaasHttpError(409,'FEATURE_FLAG_VERSION_CONFLICT','Feature flag was not found or changed by another administrator.');const organization=await client.query('SELECT 1 FROM organizations WHERE id=$1',[organizationId]);if(!organization.rowCount)throw notFound('Organization was not found.');
+    await client.query(`INSERT INTO feature_flag_overrides(flag_key,organization_id,enabled,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(flag_key,organization_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=now()`,[key,organizationId,enabled,auth.userId]);});
+  await writeAuditEvent(req,'FEATURE_FLAG_OVERRIDE_SET','feature_flag',key,{organizationId,enabled,previousVersion:version,changeReason:reason});res.json({key,organizationId,enabled,version:version+1});
+}catch(error){next(error);}});
+
+adminRouter.delete('/feature-flags/:key/organizations/:organizationId',async(req,res,next)=>{try{const auth=authContext(req);const key=flagKey(req.params.key);const organizationId=uuidValue(req.params.organizationId,'organizationId');const body=objectValue(req.body,['expectedVersion','changeReason']);const version=expectedVersion(body.expectedVersion);const reason=stringValue(body.changeReason,'changeReason',500);
+  await saasTransaction(async client=>{const flag=await client.query('UPDATE feature_flags SET version=version+1,updated_by=$3,updated_at=now() WHERE key=$1 AND version=$2 RETURNING key',[key,version,auth.userId]);if(!flag.rowCount)throw new SaasHttpError(409,'FEATURE_FLAG_VERSION_CONFLICT','Feature flag was not found or changed by another administrator.');
+    const removed=await client.query('DELETE FROM feature_flag_overrides WHERE flag_key=$1 AND organization_id=$2',[key,organizationId]);if(!removed.rowCount)throw notFound('Feature flag override was not found.');});
+  await writeAuditEvent(req,'FEATURE_FLAG_OVERRIDE_REMOVED','feature_flag',key,{organizationId,previousVersion:version,changeReason:reason});res.json({removed:true,version:version+1});
+}catch(error){next(error);}});
 
 adminRouter.get('/payments',async(req,res,next)=>{try{const{limit,offset}=pagination(req.query);const result=await saasQuery(`SELECT id,organization_id,provider_payment_id,kind,status,amount_kopecks,currency,created_at,updated_at
   FROM billing_payments ORDER BY created_at DESC LIMIT $1 OFFSET $2`,[limit,offset]);res.json({items:result.rows,limit,offset});}catch(error){next(error);}});
