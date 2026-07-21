@@ -27,8 +27,9 @@
     "worker:email": "node build/saas/email/worker.js",
     "worker:email:dev": "npx ts-node src/saas/email/worker.ts",
     "test": "npm run build && node --test test/*.test.js",
-    "lint": "npm eslint ./src",
-    "lint:fix": "npm eslint ./src --fix"
+    "test:integration": "node --test test-integration/*.test.js",
+    "lint": "eslint ./src",
+    "lint:fix": "eslint ./src --fix"
   },
   "devDependencies": {
     "@types/chai": "^4.3.20",

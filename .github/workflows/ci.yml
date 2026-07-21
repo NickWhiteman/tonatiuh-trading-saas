@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: tonatiuh_test
+          POSTGRES_USER: tonatiuh
+          POSTGRES_PASSWORD: integration-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tonatiuh -d tonatiuh_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://tonatiuh:integration-password@127.0.0.1:5432/tonatiuh_test
+      JWT_SECRET: ci-jwt-secret-with-more-than-thirty-two-bytes
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      APP_MODE: desktop
+      ENV_RELEASE: dev
+      PORT: 3131
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run db:migrate
+      - name: Verify migrations are rerunnable
+        run: npm run db:migrate
+      - run: npm run test:integration
+      - run: npm run lint
+      - run: npm audit --audit-level=high
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --tag tonatiuh-trading-saas:ci .
