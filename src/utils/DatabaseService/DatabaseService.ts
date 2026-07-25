@@ -6,6 +6,7 @@ import { ENV } from '../../plugins/Environment/const';
 
 export class DatabaseService {
   private static readonly sqliteMigrations = new Map<string, Promise<void>>();
+  private static readonly postgresMigrations = new Map<string, Promise<void>>();
   public _db: Pool | Database;
   private _ready: Promise<void>;
 
@@ -18,7 +19,12 @@ export class DatabaseService {
         user: ENV.TRADING_USER,
         password: ENV.TRADING_PASSWORD,
       });
-      this._ready = this._checkAndInitDatabase(dbName);
+      let migration = DatabaseService.postgresMigrations.get(dbName);
+      if (!migration) {
+        migration = this._checkAndInitDatabase(dbName);
+        DatabaseService.postgresMigrations.set(dbName, migration);
+      }
+      this._ready = migration;
     } else if (ENV.APP_MODE === 'desktop') {
       const dbDirectory = this._getDesktopDatabaseDirectory();
       fs.mkdirSync(dbDirectory, { recursive: true });
@@ -67,8 +73,19 @@ export class DatabaseService {
 
   private async _databaseExists(dbName: string): Promise<boolean> {
     if (ENV.APP_MODE === 'web') {
-      const result = await (this._db as Pool).query('SELECT 1 FROM pg_database WHERE datname = $1;', [dbName]);
-      return result.rowCount! > 0;
+      const client = new Pool({
+        database: 'postgres',
+        host: ENV.TRADING_HOST,
+        port: ENV.TRADING_PORT,
+        user: ENV.TRADING_USER,
+        password: ENV.TRADING_PASSWORD,
+      });
+      try {
+        const result = await client.query('SELECT 1 FROM pg_database WHERE datname = $1;', [dbName]);
+        return (result.rowCount ?? 0) > 0;
+      } finally {
+        await client.end();
+      }
     }
 
     return false;

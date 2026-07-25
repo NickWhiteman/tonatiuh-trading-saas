@@ -1,0 +1,119 @@
+name: tonatiuh-local
+
+x-backend: &backend
+  image: tonatiuh-backend-local
+  build: .
+  env_file: .env.docker
+  init: true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tonatiuh
+      POSTGRES_USER: tonatiuh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker}
+    ports:
+      - "5433:5432"
+    volumes:
+      - local-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tonatiuh -d tonatiuh"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?Set COMPOSE_DATABASE_URL in .env.docker}
+    command: ["node", "build/saas/migrate.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?Set COMPOSE_DATABASE_URL in .env.docker}
+      DATABASE_ROLE: tonatiuh_api
+    ports:
+      - "3131:3131"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3131/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 15s
+      start_period: 30s
+      retries: 20
+
+  trading-worker:
+    <<: *backend
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?Set COMPOSE_DATABASE_URL in .env.docker}
+      DATABASE_ROLE: tonatiuh_worker
+      SAAS_BOT_DATA_DIR: /app/data
+    command: ["node", "build/saas/worker.js"]
+    healthcheck:
+      disable: true
+    volumes:
+      - local-bot-data:/app/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  email-worker:
+    <<: *backend
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?Set COMPOSE_DATABASE_URL in .env.docker}
+      DATABASE_ROLE: tonatiuh_worker
+    command: ["node", "build/saas/email/worker.js"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+
+  retention-worker:
+    <<: *backend
+    environment:
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:?Set COMPOSE_DATABASE_URL in .env.docker}
+      DATABASE_ROLE: tonatiuh_worker
+    command: ["node", "build/saas/retention/worker.js"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "8025:8025"
+
+  web:
+    image: tonatiuh-web-local
+    build:
+      context: ../tonatiuh-trading-web
+      args:
+        VITE_API_BASE_URL: http://localhost:3131
+        VITE_RELEASE: local-docker
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  local-postgres:
+  local-bot-data:

@@ -17,6 +17,22 @@ npm test
 npm run start:dev
 ```
 
+## Complete local Docker stack
+
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker -f compose.local.yaml up --build -d
+```
+
+Open the UI at `http://localhost:8080`, the API at
+`http://localhost:3131/health/ready`, and captured development email at
+`http://localhost:8025`. PostgreSQL is exposed on host port `5433`. The local
+YooKassa values are intentionally non-functional; no real payment is made.
+
+Stop containers with `docker compose --env-file .env.docker -f
+compose.local.yaml down`. Add `--volumes` only when intentionally deleting all
+local test data.
+
 Desktop mode stores SQLite databases under `TONATIUH_DATA_DIR`. Production
 desktop launches also provide `TONATIUH_API_TOKEN` and `ENCRYPTION_KEY`.
 

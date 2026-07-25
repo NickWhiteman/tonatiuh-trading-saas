@@ -4,6 +4,7 @@
 /sdk/dist
 .env
 .env.production
+.env.docker
 sessions.json
 .vscode
 /databases
