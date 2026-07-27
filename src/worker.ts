@@ -1,5 +1,6 @@
 import { TradingVectorProfitService } from './trading-service/TradingVectorProfitService/TradingVectorProfitService';
 import { ConfigType } from './repository/types/types';
+import { ConfigService } from './utils/ConfigService/ConfigService';
 // import { TradingScalperService } from './trading-service/TradingScalperService/TradingScalperService';
 
 const trading = new TradingVectorProfitService();
@@ -8,11 +9,14 @@ let config: ConfigType | undefined;
 async function worker(nextConfig: ConfigType) {
   try {
     config = nextConfig;
+    await new ConfigService().syncRuntimeConfig(nextConfig);
     process.send?.({ type: 'started', configId: nextConfig.id, symbol: nextConfig.symbol });
-    await trading.startAlgorithms(nextConfig);
+    while (!isStopping) {
+      await trading.startAlgorithms(nextConfig);
+    }
   } catch (err) {
     process.send?.({ type: 'error', configId: nextConfig.id, message: String(err) });
-    process.exitCode = 1;
+    process.exit(1);
   }
 }
 

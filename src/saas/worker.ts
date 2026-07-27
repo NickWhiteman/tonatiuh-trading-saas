@@ -12,6 +12,14 @@ import { setProcessDatabaseScope } from './db/access-context';
 setProcessDatabaseScope('worker');
 
 type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' };
+type LifecycleMessage = { type: 'started' | 'error'; message?: string };
+type OrderUpdateMessage = {
+  type: 'order-update';
+  order: {
+    exchangeOrderId: string; clientOrderId: string; symbol: string; side: 'BUY' | 'SELL';
+    orderType: string; status: string; quantity: number; price: number | null; rawResponse: unknown;
+  };
+};
 type BotRow = {
   id: string; exchange_code: string; credentials_ciphertext: string; configuration: Record<string, unknown>; sandbox: boolean;
 };
@@ -19,6 +27,7 @@ type BotRow = {
 const instanceId = randomUUID();
 const processes = new Map<string, ChildProcess>();
 const restartAttempts = new Map<string, number>();
+const orderWrites = new Map<string, Promise<void>>();
 const dataRoot = path.resolve(optionalEnvConfig('SAAS_BOT_DATA_DIR') ?? path.join(process.cwd(), 'saas-bot-data'));
 function positiveMilliseconds(name: string, fallback: number): number {
   const value = Number(optionalEnvConfig(name) ?? fallback);
@@ -64,6 +73,35 @@ async function loadBot(botId: string): Promise<BotRow> {
   return result.rows[0];
 }
 
+async function persistOrderUpdate(botId: string, message: OrderUpdateMessage): Promise<void> {
+  const order = message.order;
+  if (!Number.isFinite(order.quantity) || order.quantity <= 0) throw new Error('Order update has an invalid quantity.');
+  const clientOrderId = `${botId}:${order.clientOrderId}`;
+  await saasQuery(
+    `INSERT INTO orders(organization_id,bot_id,exchange_order_id,client_order_id,symbol,side,order_type,status,quantity,price,raw_response)
+     SELECT organization_id,id,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb FROM trading_bots WHERE id=$1
+     ON CONFLICT(organization_id,client_order_id) DO UPDATE SET
+       exchange_order_id=EXCLUDED.exchange_order_id,symbol=EXCLUDED.symbol,side=EXCLUDED.side,
+       order_type=EXCLUDED.order_type,status=EXCLUDED.status,quantity=EXCLUDED.quantity,
+       price=EXCLUDED.price,raw_response=EXCLUDED.raw_response,updated_at=now()`,
+    [botId, order.exchangeOrderId, clientOrderId, order.symbol, order.side, order.orderType,
+      order.status, order.quantity, order.price, JSON.stringify(order.rawResponse ?? {})],
+  );
+}
+
+function queueOrderUpdate(botId: string, message: OrderUpdateMessage): void {
+  const previous = orderWrites.get(botId) ?? Promise.resolve();
+  let next: Promise<void>;
+  next = previous
+    .catch(() => undefined)
+    .then(() => persistOrderUpdate(botId, message))
+    .catch((error) => console.error(`Failed to persist order update for bot ${botId}.`, error))
+    .finally(() => {
+      if (orderWrites.get(botId) === next) orderWrites.delete(botId);
+    });
+  orderWrites.set(botId, next);
+}
+
 async function startBot(botId: string): Promise<void> {
   if (processes.get(botId)?.exitCode === null) return;
   const bot = await loadBot(botId);
@@ -74,6 +112,7 @@ async function startBot(botId: string): Promise<void> {
   const entry = path.join(__dirname, '..', 'worker.js');
   const childEnvironment: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    ENCRYPTION_KEY_FILE: process.env.ENCRYPTION_KEY_FILE,
     APP_MODE: 'desktop', ENV_RELEASE: bot.sandbox ? 'dev' : 'prod', TONATIUH_DATA_DIR: botDataDir, PORT: process.env.PORT ?? '3131',
   };
   const child = fork(entry, [], {
@@ -86,12 +125,13 @@ async function startBot(botId: string): Promise<void> {
     `UPDATE trading_bots SET actual_state='STARTING',worker_instance_id=$2,worker_pid=$3,started_at=now(),heartbeat_at=now(),last_error=NULL,updated_at=now() WHERE id=$1`,
     [botId, instanceId, child.pid ?? null],
   );
-  child.on('message', (message: { type?: string; message?: string }) => {
+  child.on('message', (message: LifecycleMessage | OrderUpdateMessage) => {
     if (message.type === 'started') {
       restartAttempts.delete(botId);
       void saasQuery("UPDATE trading_bots SET actual_state='RUNNING',heartbeat_at=now(),updated_at=now() WHERE id=$1 AND worker_instance_id=$2", [botId, instanceId]);
     }
     if (message.type === 'error') void failBot(botId, message.message ?? 'Trading process failed.');
+    if (message.type === 'order-update') queueOrderUpdate(botId, message);
   });
   child.once('exit', (code, signal) => {
     if (processes.get(botId) !== child) return;
@@ -125,13 +165,21 @@ async function stopBot(botId: string): Promise<void> {
   const child = processes.get(botId);
   processes.delete(botId);
   restartAttempts.delete(botId);
+  let stoppedCleanly = true;
   if (child?.exitCode === null) {
     child.send({ type: 'stop' });
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => { if (child.exitCode === null) child.kill('SIGTERM'); resolve(); }, stopTimeoutMs);
+    stoppedCleanly = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGTERM');
+        resolve(false);
+      }, stopTimeoutMs);
       timer.unref();
-      child.once('exit', () => { clearTimeout(timer); resolve(); });
+      child.once('exit', (code) => { clearTimeout(timer); resolve(code === 0); });
     });
+  }
+  if (!stoppedCleanly) {
+    await failBot(botId, 'Trading process did not close its filled position cleanly before stopping.');
+    throw new Error('Trading process did not stop cleanly.');
   }
   await saasQuery(
     `UPDATE trading_bots SET actual_state='STOPPED',worker_instance_id=NULL,worker_pid=NULL,heartbeat_at=now(),last_error=NULL,updated_at=now() WHERE id=$1`, [botId],
@@ -181,6 +229,7 @@ async function runLeader(client: PoolClient): Promise<void> {
     if (processes.size) await saasQuery("UPDATE trading_bots SET heartbeat_at=now() WHERE worker_instance_id=$1 AND actual_state='RUNNING'", [instanceId]);
   }
   await Promise.all([...processes.keys()].map(stopBot));
+  await Promise.all([...orderWrites.values()]);
   await client.query("SELECT pg_advisory_unlock(hashtext('tonatiuh-saas-worker-leader'))");
 }
 

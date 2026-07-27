@@ -5,8 +5,14 @@ const { uuidValue } = require('../build/saas/http/validate');
 
 describe('SaaS trading validation', () => {
   it('normalizes a whitelisted bot configuration', () => {
-    expect(tradingConfiguration({ symbol: 'btc/usdt', positionSize: 0.1, isOnlyBuy: true })).to.deep.equal({
-      symbol: 'BTC/USDT', positionSize: 0.1, isOnlyBuy: true,
+    expect(tradingConfiguration({
+      symbol: 'btc/usdt', positionSize: 0.1, percentBuyBackStep: 0.01, percentProfit: 0.02,
+      percentFromBalance: 0.05, stopLoss: 0.03, percentTargetAfterTakeProfit: 0.01,
+      isOnlyBuy: true, isFibonacci: false, isPercentTargetAfterTakeProfit: true,
+    })).to.deep.equal({
+      symbol: 'BTC/USDT', positionSize: 0.1, percentBuyBackStep: 0.01, percentProfit: 0.02,
+      percentFromBalance: 0.05, stopLoss: 0.03, percentTargetAfterTakeProfit: 0.01,
+      isOnlyBuy: true, isFibonacci: false, isPercentTargetAfterTakeProfit: true,
     });
   });
 

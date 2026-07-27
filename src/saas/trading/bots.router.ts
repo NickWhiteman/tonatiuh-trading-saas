@@ -41,7 +41,13 @@ botsRouter.patch('/:id',requireRoles('OWNER','ADMIN','TRADER'),requireCurrentLeg
     [id,auth.organizationId,optionalStringValue(body.name,'name',100),JSON.stringify(configuration)]);await writeAuditEvent(req,'BOT_UPDATED','bot',id);res.json(result.rows[0]);
 }catch(error){next(error);}});
 
-for(const command of ['START','STOP','RESTART'] as const){botsRouter.post(`/:id/${command.toLowerCase()}`,
+const commandRoutes=[
+  {path:'start',command:'START',audit:'BOT_START_REQUESTED'},
+  {path:'stop',command:'STOP',audit:'BOT_STOP_REQUESTED'},
+  {path:'restart',command:'RESTART',audit:'BOT_RESTART_REQUESTED'},
+  {path:'emergency-stop',command:'STOP',audit:'BOT_EMERGENCY_STOP_REQUESTED'},
+] as const;
+for(const {path,command,audit} of commandRoutes){botsRouter.post(`/:id/${path}`,
   requireRoles('OWNER','ADMIN','TRADER'),...(command==='STOP'?[]:[requireCurrentLegalConsent]),async(req,res,next)=>{try{
     const auth=authContext(req);const botId=uuidValue(req.params.id,'id');const key=String(req.header('idempotency-key')??'').trim();
     if(!/^[A-Za-z0-9._:-]{8,128}$/.test(key))throw new SaasHttpError(400,'IDEMPOTENCY_KEY_REQUIRED','A valid Idempotency-Key header is required.');
@@ -54,7 +60,7 @@ for(const command of ['START','STOP','RESTART'] as const){botsRouter.post(`/:id/
       const existing=(await client.query<{bot_id:string;command:string}>(
         'SELECT * FROM bot_commands WHERE organization_id=$1 AND idempotency_key=$2',[auth.organizationId,key])).rows[0];
       if(existing.bot_id!==botId||existing.command!==command)throw new SaasHttpError(409,'IDEMPOTENCY_KEY_CONFLICT','Idempotency key was used for another command.');return existing;
-    });await writeAuditEvent(req,`BOT_${command}_REQUESTED`,'bot',botId);res.status(202).json(result);
+    });await writeAuditEvent(req,audit,'bot',botId);res.status(202).json(result);
   }catch(error){next(error);}});}
 
 botsRouter.get('/:id/commands',async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');const result=await saasQuery(

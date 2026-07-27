@@ -12,28 +12,18 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
    * This method starting algorithm trading
    */
   async startAlgorithms(config: ConfigType): Promise<void> {
-    try {
-      this._config = config;
-      this._SYMBOL = config.symbol;
-      await this._initGeneralUtils(config);
-      await this._ConfigService.recordLogger(this._loggerIdentity, this._config.id);
-      console.log(`=> AbstractTradingClass initialized!`);
+    this._config = config;
+    this._SYMBOL = config.symbol;
+    await this._initGeneralUtils(config);
+    await this._ConfigService.recordLogger(this._loggerIdentity, this._config.id);
+    console.log(`=> AbstractTradingClass initialized!`);
 
-      await this._startTradingSession({
-        typeTrading: 'one-trade',
-        watchingTakeProfitLogic: async (param: WatchingTakeProfitLogicType) =>
-          await this._watchingTakeProfitLogic(param),
-        watchingBuyBackLogic: async (param: WatchingBuyBackLogicType) => await this._watchingBuyBackLogic(param),
-      });
-    } catch (error: unknown) {
-      const { message } = error as { message: string };
-      console.log(
-        `
-          ${error}
-          ${message}
-        `,
-      );
-    }
+    await this._startTradingSession({
+      typeTrading: 'one-trade',
+      watchingTakeProfitLogic: async (param: WatchingTakeProfitLogicType) =>
+        await this._watchingTakeProfitLogic(param),
+      watchingBuyBackLogic: async (param: WatchingBuyBackLogicType) => await this._watchingBuyBackLogic(param),
+    });
   }
 
   private async _watchingTakeProfitLogic({
@@ -42,7 +32,7 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
     unrealizedPnl,
     settingTakeProfit,
   }: WatchingTakeProfitLogicType): Promise<boolean> {
-    if (unrealizedPnl >= profitPrice * this._config.percentProfit) {
+    if (unrealizedPnl >= this._config.percentProfit) {
       if (this._config.isPercentTargetAfterTakeProfit) {
         const resultTakeProfitBehavior = await this._onPriceTracker({
           side: side === 'sell' ? 'buy' : 'sell',
@@ -56,10 +46,8 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
       }
 
       if (!this._config.isPercentTargetAfterTakeProfit) {
-        await this._openPositionForStrategy({
-          side: side === 'sell' ? 'buy' : 'sell',
-          settingOrder: settingTakeProfit,
-        });
+        const closingOrder = await this._OrdersOperationService.closeFilledPosition(this._SYMBOL, this._indexOperation);
+        if (!closingOrder) return false;
         console.log('======> TakeProfit close all positions!');
         return true;
       }
@@ -109,6 +97,7 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
    * This method finishing algorithm trading
    */
   async endAlgorithms(): Promise<void> {
-    await this._OrdersOperationService.cancelAllOrders(this._SYMBOL);
+    if (!this._OrdersOperationService || !this._SYMBOL) return;
+    await this._OrdersOperationService.closeFilledPosition(this._SYMBOL, this._indexOperation);
   }
 }

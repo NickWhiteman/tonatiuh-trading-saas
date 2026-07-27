@@ -13,10 +13,10 @@ export async function applyPaymentLifecycle(client:PoolClient,local:LocalPayment
     reconciliation_attempts=CASE WHEN $2 IN ('pending','waiting_for_capture') THEN reconciliation_attempts+1 ELSE reconciliation_attempts END,updated_at=now() WHERE provider_payment_id=$1`,[payment.id,payment.status,stored,config.reconciliationMinutes]);
   if(payment.status==='succeeded'&&payment.paid===true){const applied=await client.query('UPDATE billing_payments SET entitlement_applied_at=now() WHERE provider_payment_id=$1 AND entitlement_applied_at IS NULL RETURNING id',[payment.id]);if(!applied.rowCount)return;
     const method=payment.payment_method?.saved===true?payment.payment_method.id:null;await client.query(`INSERT INTO subscriptions(organization_id,plan,status,current_period_end,payment_method_id,auto_renew,next_billing_at,last_payment_id)
-      VALUES($1,'PRO','ACTIVE',now()+interval '1 month',$3,$3 IS NOT NULL,CASE WHEN $3 IS NOT NULL THEN now()+interval '1 month' END,$2)
+      VALUES($1,'PRO','ACTIVE',now()+interval '1 month',$3::text,$3::text IS NOT NULL,CASE WHEN $3::text IS NOT NULL THEN now()+interval '1 month' END,$2)
       ON CONFLICT(organization_id) DO UPDATE SET plan='PRO',status='ACTIVE',current_period_end=GREATEST(COALESCE(subscriptions.current_period_end,now()),now())+interval '1 month',
-      payment_method_id=COALESCE($3,subscriptions.payment_method_id),auto_renew=CASE WHEN $3 IS NULL THEN subscriptions.auto_renew ELSE true END,
-      next_billing_at=CASE WHEN COALESCE($3,subscriptions.payment_method_id) IS NULL THEN NULL ELSE GREATEST(COALESCE(subscriptions.current_period_end,now()),now())+interval '1 month' END,
+      payment_method_id=COALESCE($3::text,subscriptions.payment_method_id),auto_renew=CASE WHEN $3::text IS NULL THEN subscriptions.auto_renew ELSE true END,
+      next_billing_at=CASE WHEN COALESCE($3::text,subscriptions.payment_method_id) IS NULL THEN NULL ELSE GREATEST(COALESCE(subscriptions.current_period_end,now()),now())+interval '1 month' END,
       cancel_at_period_end=false,last_payment_id=$2,grace_period_end=NULL,retry_count=0,last_billing_error_code=NULL,updated_at=now()`,[local.organization_id,payment.id,method]);return;}
   if(payment.status!=='canceled'||local.kind!=='RENEWAL')return;const applied=await client.query('UPDATE billing_payments SET failure_applied_at=now() WHERE provider_payment_id=$1 AND failure_applied_at IS NULL RETURNING id',[payment.id]);if(!applied.rowCount)return;
   const reason=payment.cancellation_details?.reason??'payment_canceled';const revoked=reason==='permission_revoked';const delay=revoked?undefined:retryDelayHours(local.attempt_number,config.retryScheduleHours);

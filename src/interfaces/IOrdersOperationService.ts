@@ -21,6 +21,7 @@ export interface IOrdersOperationService {
     openLimitPositionByGridLine: OpenLimitPositionByGridLineType,
   ) => Promise<void>;
   cancelAllOrders: (symbol: string) => Promise<void>;
+  closeFilledPosition: (symbol: string, indexOperation?: string) => Promise<Order | undefined>;
   createMarketOrLimitOrStopOrder: (settings: CreateOpenPositionType) => Promise<void>;
   openStopMarketPosition: (positionData: CreateOpenPositionType) => Promise<void>;
   checkingExistingOrders: (param: CheckingExistingOrdersType) => Promise<void>;
