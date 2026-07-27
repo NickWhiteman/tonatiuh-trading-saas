@@ -380,6 +380,31 @@ paths:
       responses:
         '200': {description: Last 200 orders}
         default: {$ref: '#/components/responses/Error'}
+  /api/v1/bots/{id}/logs:
+    get:
+      tags: [Bots]
+      operationId: listBotRuntimeLogs
+      parameters: [{$ref: '#/components/parameters/ResourceId'}]
+      responses:
+        '200':
+          description: Last 300 runtime log entries in chronological order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, level, message, created_at]
+                      properties:
+                        id: {type: string, pattern: '^[0-9]+$'}
+                        level: {type: string, enum: [INFO, WARN, ERROR]}
+                        message: {type: string, maxLength: 4000}
+                        created_at: {type: string, format: date-time}
+        default: {$ref: '#/components/responses/Error'}
 
   /api/v1/email/provider-events:
     post:

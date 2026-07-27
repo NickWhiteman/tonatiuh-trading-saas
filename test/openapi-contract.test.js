@@ -17,7 +17,8 @@ const unversionedExpected = {
   '/api/organizations/members/{userId}':['delete','patch'], '/api/organizations/invitations':['get','post'],
   '/api/organizations/invitations/accept':['post'], '/api/organizations/invitations/{id}':['delete'],
   '/api/bots':['get','post'], '/api/bots/{id}':['get','patch'], '/api/bots/{id}/start':['post'], '/api/bots/{id}/stop':['post'],
-  '/api/bots/{id}/restart':['post'], '/api/bots/{id}/commands':['get'], '/api/bots/{id}/orders':['get'],
+  '/api/bots/{id}/emergency-stop':['post'],
+  '/api/bots/{id}/restart':['post'], '/api/bots/{id}/commands':['get'], '/api/bots/{id}/orders':['get'], '/api/bots/{id}/logs':['get'],
   '/health/live':['get'], '/health/ready':['get'], '/metrics':['get'],
   '/api/admin/stats':['get'], '/api/admin/users':['get'], '/api/admin/users/{id}/status':['patch'],
   '/api/admin/users/{id}/revoke-sessions':['post'], '/api/admin/organizations':['get'],
@@ -47,10 +48,11 @@ describe('OpenAPI contract',()=>{
       else assert.deepEqual(operation.security??api.security,[{bearerAuth:[]}],`${operation.operationId} must require Bearer auth`);}
     assert.equal(new Set(ids).size,ids.length);});
   it('requires idempotency keys for money and bot commands',async()=>{const api=await SwaggerParser.dereference(contractPath);
-    for(const path of ['/api/v1/billing/checkout','/api/v1/bots/{id}/start','/api/v1/bots/{id}/stop','/api/v1/bots/{id}/restart','/api/v1/admin/payments/{id}/refund']){
+    for(const path of ['/api/v1/billing/checkout','/api/v1/bots/{id}/start','/api/v1/bots/{id}/stop','/api/v1/bots/{id}/emergency-stop','/api/v1/bots/{id}/restart','/api/v1/admin/payments/{id}/refund']){
       const header=api.paths[path].post.parameters.find(parameter=>parameter.name==='Idempotency-Key');assert.equal(header.required,true,path);}});
   it('keeps the documented routers mounted in the application',async()=>{const app=await readFile('src/app.ts','utf8');
     for(const mount of ['app.use(API_V1_PREFIX,apiRouter)','app.use(LEGACY_API_PREFIX,legacyApiDeprecation,apiRouter)',"'/health'","'/metrics'"])assert.ok(app.includes(mount),mount);
     const router=await readFile('src/saas/api.ts','utf8');for(const mount of ["'/auth'","'/billing'","'/email'","'/exchanges'","'/bots'","'/organizations'","'/features'","'/compliance'","'/admin'"])assert.ok(router.includes(mount),mount);
-    const bots=await readFile('src/saas/trading/bots.router.ts','utf8');assert.ok(bots.includes("['START','STOP','RESTART']"));});
+    const bots=await readFile('src/saas/trading/bots.router.ts','utf8');
+    for(const command of ["command:'START'","command:'STOP'","command:'RESTART'"])assert.ok(bots.includes(command),command);});
 });

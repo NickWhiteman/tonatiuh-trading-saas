@@ -13,6 +13,9 @@ setProcessDatabaseScope('worker');
 
 type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' };
 type LifecycleMessage = { type: 'started' | 'error'; message?: string };
+type RuntimeLogMessage = {
+  type: 'runtime-log'; level: 'INFO' | 'WARN' | 'ERROR'; message: string; occurredAt: string;
+};
 type OrderUpdateMessage = {
   type: 'order-update';
   order: {
@@ -28,6 +31,9 @@ const instanceId = randomUUID();
 const processes = new Map<string, ChildProcess>();
 const restartAttempts = new Map<string, number>();
 const orderWrites = new Map<string, Promise<void>>();
+const runtimeLogBuffers = new Map<string, RuntimeLogMessage[]>();
+const runtimeLogTimers = new Map<string, NodeJS.Timeout>();
+const runtimeLogCleanupAt = new Map<string, number>();
 const dataRoot = path.resolve(optionalEnvConfig('SAAS_BOT_DATA_DIR') ?? path.join(process.cwd(), 'saas-bot-data'));
 function positiveMilliseconds(name: string, fallback: number): number {
   const value = Number(optionalEnvConfig(name) ?? fallback);
@@ -102,6 +108,57 @@ function queueOrderUpdate(botId: string, message: OrderUpdateMessage): void {
   orderWrites.set(botId, next);
 }
 
+function redactRuntimeLog(message: string): string {
+  return message
+    .replace(/((?:apiKey|privateKey|password|secret|token)["']?\s*[:=]\s*["']?)[^"',}\s]+/gi, '$1[REDACTED]')
+    .slice(0, 4000);
+}
+
+async function flushRuntimeLogs(botId: string): Promise<void> {
+  const timer = runtimeLogTimers.get(botId);
+  if (timer) clearTimeout(timer);
+  runtimeLogTimers.delete(botId);
+  const entries = runtimeLogBuffers.get(botId)?.splice(0, 100) ?? [];
+  if (!entries.length) return;
+  await saasQuery(
+    `INSERT INTO bot_runtime_logs(organization_id,bot_id,level,message,created_at)
+     SELECT b.organization_id,b.id,entry.level,entry.message,entry.created_at
+     FROM trading_bots b
+     CROSS JOIN unnest($2::text[],$3::text[],$4::timestamptz[]) AS entry(level,message,created_at)
+     WHERE b.id=$1`,
+    [botId, entries.map((entry) => entry.level), entries.map((entry) => redactRuntimeLog(entry.message)),
+      entries.map((entry) => entry.occurredAt)],
+  );
+  const now = Date.now();
+  if ((runtimeLogCleanupAt.get(botId) ?? 0) < now - 60_000) {
+    runtimeLogCleanupAt.set(botId, now);
+    await saasQuery(
+      `DELETE FROM bot_runtime_logs WHERE bot_id=$1
+       AND (created_at < now()-interval '7 days' OR id IN (
+         SELECT id FROM bot_runtime_logs WHERE bot_id=$1 ORDER BY created_at DESC,id DESC OFFSET 2000
+       ))`, [botId],
+    );
+  }
+  if (runtimeLogBuffers.get(botId)?.length) scheduleRuntimeLogFlush(botId);
+}
+
+function scheduleRuntimeLogFlush(botId: string): void {
+  if (runtimeLogTimers.has(botId)) return;
+  const timer = setTimeout(() => {
+    void flushRuntimeLogs(botId).catch((error) => console.error(`Failed to persist runtime logs for bot ${botId}.`, error));
+  }, 250);
+  timer.unref();
+  runtimeLogTimers.set(botId, timer);
+}
+
+function queueRuntimeLog(botId: string, message: RuntimeLogMessage): void {
+  const buffer = runtimeLogBuffers.get(botId) ?? [];
+  if (buffer.length >= 1000) buffer.shift();
+  buffer.push(message);
+  runtimeLogBuffers.set(botId, buffer);
+  scheduleRuntimeLogFlush(botId);
+}
+
 async function startBot(botId: string): Promise<void> {
   if (processes.get(botId)?.exitCode === null) return;
   const bot = await loadBot(botId);
@@ -125,13 +182,14 @@ async function startBot(botId: string): Promise<void> {
     `UPDATE trading_bots SET actual_state='STARTING',worker_instance_id=$2,worker_pid=$3,started_at=now(),heartbeat_at=now(),last_error=NULL,updated_at=now() WHERE id=$1`,
     [botId, instanceId, child.pid ?? null],
   );
-  child.on('message', (message: LifecycleMessage | OrderUpdateMessage) => {
+  child.on('message', (message: LifecycleMessage | OrderUpdateMessage | RuntimeLogMessage) => {
     if (message.type === 'started') {
       restartAttempts.delete(botId);
       void saasQuery("UPDATE trading_bots SET actual_state='RUNNING',heartbeat_at=now(),updated_at=now() WHERE id=$1 AND worker_instance_id=$2", [botId, instanceId]);
     }
     if (message.type === 'error') void failBot(botId, message.message ?? 'Trading process failed.');
     if (message.type === 'order-update') queueOrderUpdate(botId, message);
+    if (message.type === 'runtime-log') queueRuntimeLog(botId, message);
   });
   child.once('exit', (code, signal) => {
     if (processes.get(botId) !== child) return;
@@ -178,9 +236,11 @@ async function stopBot(botId: string): Promise<void> {
     });
   }
   if (!stoppedCleanly) {
+    await flushRuntimeLogs(botId);
     await failBot(botId, 'Trading process did not close its filled position cleanly before stopping.');
     throw new Error('Trading process did not stop cleanly.');
   }
+  await flushRuntimeLogs(botId);
   await saasQuery(
     `UPDATE trading_bots SET actual_state='STOPPED',worker_instance_id=NULL,worker_pid=NULL,heartbeat_at=now(),last_error=NULL,updated_at=now() WHERE id=$1`, [botId],
   );
@@ -230,6 +290,7 @@ async function runLeader(client: PoolClient): Promise<void> {
   }
   await Promise.all([...processes.keys()].map(stopBot));
   await Promise.all([...orderWrites.values()]);
+  await Promise.all([...runtimeLogBuffers.keys()].map(flushRuntimeLogs));
   await client.query("SELECT pg_advisory_unlock(hashtext('tonatiuh-saas-worker-leader'))");
 }
 
