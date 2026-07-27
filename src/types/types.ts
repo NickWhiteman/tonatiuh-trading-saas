@@ -192,7 +192,6 @@ export type TradingType = 'grid' | 'one-trade';
 export type StartAlgorithmsType = {
   typeTrading: TradingType;
   watchingTakeProfitLogic?: (param: WatchingTakeProfitLogicType) => Promise<boolean>;
-  watchingBuyBackLogic?: (param: WatchingBuyBackLogicType) => Promise<OptionType | false>;
   watchingGridLogic?: () => Promise<void>;
 };
 
@@ -201,16 +200,6 @@ export type WatchingTakeProfitLogicType = {
   profitPrice: number;
   unrealizedPnl: number;
   settingTakeProfit: SettingOrderType;
-};
-
-export type WatchingBuyBackLogicType = Pick<WatchingTakeProfitLogicType, 'side' | 'unrealizedPnl'> & {
-  balance: BalanceType;
-  buyingBack: number;
-  unrealizedPnl: number;
-  nativeCurrency: string;
-  convertValue: number;
-  lastPrice: number;
-  options: OptionType;
 };
 
 export type CheckingExistingOrdersType = {
@@ -277,6 +266,11 @@ export type LoggerType = {
   balance: { [key: string]: any };
   price: number;
   unrealizedPnl: number;
+  pnlPerUnit: number;
+  positionPnl: number;
+  averageEntryPrice: number;
+  entryAmount: number;
+  buyBackAmount: number;
   lastPrice: number;
   side: ModeType;
   profitPrice: number;

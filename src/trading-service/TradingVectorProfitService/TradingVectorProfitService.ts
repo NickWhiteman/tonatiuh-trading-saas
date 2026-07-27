@@ -1,6 +1,6 @@
 import { ConfigType } from 'repository/types/types';
 import { ITrading } from '../../interfaces/ITrading';
-import { OptionType, WatchingBuyBackLogicType, WatchingTakeProfitLogicType } from '../../types/types';
+import { WatchingTakeProfitLogicType } from '../../types/types';
 import { AbstractTradingClass } from '../abstract.trading';
 
 export class TradingVectorProfitService extends AbstractTradingClass implements ITrading {
@@ -22,7 +22,6 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
       typeTrading: 'one-trade',
       watchingTakeProfitLogic: async (param: WatchingTakeProfitLogicType) =>
         await this._watchingTakeProfitLogic(param),
-      watchingBuyBackLogic: async (param: WatchingBuyBackLogicType) => await this._watchingBuyBackLogic(param),
     });
   }
 
@@ -51,43 +50,6 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
         console.log('======> TakeProfit close all positions!');
         return true;
       }
-    }
-
-    return false;
-  }
-
-  private async _watchingBuyBackLogic({
-    unrealizedPnl,
-    buyingBack,
-    balance,
-    nativeCurrency,
-    convertValue,
-    side,
-    lastPrice,
-    options,
-  }: WatchingBuyBackLogicType): Promise<OptionType | false> {
-    if (unrealizedPnl <= -buyingBack) {
-      const amountForBuyBack =
-        (balance[nativeCurrency].free * this._config.percentFromBalance) / convertValue > 10 / convertValue
-          ? (balance[nativeCurrency].free * this._config.percentFromBalance) / convertValue
-          : 0;
-
-      if (amountForBuyBack !== 0) {
-        await this._openPositionForStrategy({
-          side,
-          settingOrder: {
-            symbol: this._SYMBOL,
-            type: 'limit',
-            price: lastPrice,
-            amount: amountForBuyBack,
-          },
-        });
-        options.drawdownStep++;
-        options.buyingBack += amountForBuyBack;
-        console.log('======> Open new position!');
-      }
-
-      return options;
     }
 
     return false;
