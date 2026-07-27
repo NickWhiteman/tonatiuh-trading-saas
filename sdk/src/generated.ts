@@ -53,9 +53,11 @@ export interface Operations {
   updateBot: { path: { id: string; }; query: never; headers: never; body: { name?: string; configuration?: TradingConfiguration; }; bodyRequired: true; response: unknown; };
   startBot: { path: { id: string; }; query: never; headers: { "Idempotency-Key": string; }; body: never; bodyRequired: false; response: unknown; };
   stopBot: { path: { id: string; }; query: never; headers: { "Idempotency-Key": string; }; body: never; bodyRequired: false; response: unknown; };
+  emergencyStopBot: { path: { id: string; }; query: never; headers: { "Idempotency-Key": string; }; body: never; bodyRequired: false; response: unknown; };
   restartBot: { path: { id: string; }; query: never; headers: { "Idempotency-Key": string; }; body: never; bodyRequired: false; response: unknown; };
   listBotCommands: { path: { id: string; }; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
   listBotOrders: { path: { id: string; }; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
+  listBotRuntimeLogs: { path: { id: string; }; query: never; headers: never; body: never; bodyRequired: false; response: { items: Array<{ id: string; level: "INFO" | "WARN" | "ERROR"; message: string; created_at: string; }>; }; };
   emailProviderEvent: { path: never; query: never; headers: never; body: { eventId: string; messageId: string; type: "DELIVERED" | "HARD_BOUNCE" | "COMPLAINT"; }; bodyRequired: true; response: unknown; };
   listFeatureDecisions: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: { features: { [key: string]: boolean; }; }; };
   liveness: { path: never; query: never; headers: never; body: never; bodyRequired: false; response: unknown; };
@@ -133,9 +135,11 @@ export const operations={
   updateBot: {method:"PATCH",path:"/api/v1/bots/{id}"},
   startBot: {method:"POST",path:"/api/v1/bots/{id}/start"},
   stopBot: {method:"POST",path:"/api/v1/bots/{id}/stop"},
+  emergencyStopBot: {method:"POST",path:"/api/v1/bots/{id}/emergency-stop"},
   restartBot: {method:"POST",path:"/api/v1/bots/{id}/restart"},
   listBotCommands: {method:"GET",path:"/api/v1/bots/{id}/commands"},
   listBotOrders: {method:"GET",path:"/api/v1/bots/{id}/orders"},
+  listBotRuntimeLogs: {method:"GET",path:"/api/v1/bots/{id}/logs"},
   emailProviderEvent: {method:"POST",path:"/api/v1/email/provider-events"},
   listFeatureDecisions: {method:"GET",path:"/api/v1/features"},
   liveness: {method:"GET",path:"/health/live"},

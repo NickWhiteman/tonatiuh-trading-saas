@@ -67,3 +67,8 @@ botsRouter.get('/:id/commands',async(req,res,next)=>{try{const auth=authContext(
   'SELECT id,command,status,error,created_at,processed_at FROM bot_commands WHERE bot_id=$1 AND organization_id=$2 ORDER BY created_at DESC LIMIT 100',[id,auth.organizationId]);res.json({items:result.rows});}catch(error){next(error);}});
 botsRouter.get('/:id/orders',async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');const result=await saasQuery(
   'SELECT id,exchange_order_id,client_order_id,symbol,side,order_type,status,quantity,price,created_at,updated_at FROM orders WHERE bot_id=$1 AND organization_id=$2 ORDER BY created_at DESC LIMIT 200',[id,auth.organizationId]);res.json({items:result.rows});}catch(error){next(error);}});
+botsRouter.get('/:id/logs',async(req,res,next)=>{try{const auth=authContext(req);const id=uuidValue(req.params.id,'id');
+  const bot=await saasQuery('SELECT 1 FROM trading_bots WHERE id=$1 AND organization_id=$2',[id,auth.organizationId]);if(!bot.rowCount)throw notFound('Bot was not found.');
+  const result=await saasQuery(
+    'SELECT id::text,level,message,created_at FROM bot_runtime_logs WHERE bot_id=$1 AND organization_id=$2 ORDER BY created_at DESC,id DESC LIMIT 300',
+    [id,auth.organizationId]);res.json({items:result.rows.reverse()});}catch(error){next(error);}});
