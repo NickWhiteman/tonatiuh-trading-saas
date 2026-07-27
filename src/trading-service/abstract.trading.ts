@@ -32,6 +32,11 @@ import { ConfigService } from '../utils/ConfigService/ConfigService';
 import { LoggerService } from '../utils/LoggerService/LoggerService';
 import { ENV } from '../plugins/Environment/const';
 import { OrdersCheckingService } from '../utils/OrdersCheckingsService/OrdersCheckingsService';
+import {
+  calculateBuyBackAmount,
+  calculateBuyBackOrderAmount,
+  calculatePositionMetrics,
+} from './trading-math';
 
 export abstract class AbstractTradingClass {
   protected _indexOperation: string;
@@ -58,7 +63,6 @@ export abstract class AbstractTradingClass {
   /**
    * @param typeTrading - flag trading behavior 'one-trade' or 'grid'
    * @param watchingTakeProfitLogic - watching take profit logic call in _watchingProcess
-   * @param watchingBuyBackLogic - watching buyback logic call in _watchingProcess
    * @param watchingGridLogic - watching grid logic call in _watchingProcess
    * @returns void
    */
@@ -280,7 +284,6 @@ export abstract class AbstractTradingClass {
       firstOrder,
       price,
       watchingTakeProfitLogic,
-      watchingBuyBackLogic,
       watchingGridLogic,
     } = param;
     const options: OptionType = {
@@ -302,11 +305,17 @@ export abstract class AbstractTradingClass {
         entryAmount > 0
           ? entryOrders.reduce((sum, order) => sum + Number(order.price) * Number(order.amount), 0) / entryAmount
           : price;
-      const unrealizedPnl =
-        entrySide === 'buy'
-          ? (lastPrice - averageEntryPrice) / averageEntryPrice
-          : (averageEntryPrice - lastPrice) / averageEntryPrice;
-      const buyBackPrice = this._config.percentBuyBackStep * options.drawdownStep;
+      const { pnlPerUnit, pnlRatio: unrealizedPnl, positionPnl } = calculatePositionMetrics(
+        entrySide,
+        averageEntryPrice,
+        lastPrice,
+        entryAmount,
+      );
+      const buyBackAmount = calculateBuyBackAmount(
+        averageEntryPrice,
+        this._config.percentBuyBackStep,
+        options.drawdownStep,
+      );
       const profitPrice =
         averageEntryPrice +
         (entrySide === 'sell'
@@ -314,7 +323,6 @@ export abstract class AbstractTradingClass {
           : averageEntryPrice * this._config.percentProfit);
       const deltaForSale = await this._getDeltaForSale({ side, buyingBack: options.buyingBack, price, lastPrice });
       const deltaForBuy = await this._getDeltaForBuy({ side, buyingBack: options.buyingBack, price, lastPrice });
-      const convertValue = side === 'buy' ? 1 : lastPrice;
       const settingTakeProfit: SettingOrderType = {
         ...settingForFirstOrder,
         type: 'market',
@@ -341,6 +349,11 @@ export abstract class AbstractTradingClass {
         balance,
         price,
         unrealizedPnl,
+        pnlPerUnit,
+        positionPnl,
+        averageEntryPrice,
+        entryAmount,
+        buyBackAmount,
         lastPrice,
         side,
         profitPrice,
@@ -380,25 +393,16 @@ export abstract class AbstractTradingClass {
           break;
         }
 
-        if (unrealizedPnl <= -buyBackPrice) {
-          let amountForBuyBack;
-          if (this._config.isFibonacci) {
-            // With fibonacci
-            const unrealizedValue = (this._config.positionSize * lastPrice * options.drawdownStep) / convertValue;
-            console.log('unrealizedValue => ', balance[nativeCurrency].free - unrealizedValue);
-            amountForBuyBack =
-              balance[nativeCurrency].free - unrealizedValue >= 0
-                ? side === 'buy'
-                  ? unrealizedValue / lastPrice
-                  : unrealizedValue
-                : 0;
-          } else {
-            // Without fibonacci
-            amountForBuyBack =
-              (balance[nativeCurrency].free * this._config.percentFromBalance) / convertValue > 0
-                ? (balance[nativeCurrency].free * this._config.percentFromBalance) / convertValue
-                : 0;
-          }
+        if (buyBackAmount > 0 && pnlPerUnit <= -buyBackAmount) {
+          const amountForBuyBack = calculateBuyBackOrderAmount({
+            side,
+            availableBalance: Number(balance[nativeCurrency].free),
+            lastPrice,
+            percentFromBalance: this._config.percentFromBalance,
+            positionSize: this._config.positionSize,
+            drawdownStep: options.drawdownStep,
+            fibonacci: this._config.isFibonacci,
+          });
 
           if (amountForBuyBack > 0) {
             await this._openPositionForStrategy({
@@ -412,7 +416,12 @@ export abstract class AbstractTradingClass {
             });
             options.drawdownStep++;
             options.buyingBack += amountForBuyBack;
-            console.log('======> Open new position!');
+            console.log('======> Open new position!', {
+              amount: amountForBuyBack,
+              amountUnit: firstCurrency,
+              triggerLossPerUnit: -buyBackAmount,
+              pnlPerUnit,
+            });
           }
         }
       }

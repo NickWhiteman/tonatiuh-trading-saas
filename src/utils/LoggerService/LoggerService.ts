@@ -36,6 +36,11 @@ export class LoggerService implements ILoggerService {
     balance,
     price,
     unrealizedPnl,
+    pnlPerUnit,
+    positionPnl,
+    averageEntryPrice,
+    entryAmount,
+    buyBackAmount,
     lastPrice,
     side,
     profitPrice,
@@ -54,12 +59,24 @@ export class LoggerService implements ILoggerService {
     console.log('balance =>', balance.free);
     console.log('profitPrice =>', {
       profitPrice,
-      amount: price * percentProfit + options.buyingBack * takerFee,
+      targetProfitPerUnit: averageEntryPrice * percentProfit,
+      estimatedPositionProfit: averageEntryPrice * percentProfit * entryAmount,
     });
-    console.log('newBuyback => ', { buyBack: -(price * (percentBuyBackStep * options.drawdownStep)) });
+    console.log('buyback => ', {
+      triggerLossPerUnit: -buyBackAmount,
+      triggerRatio: -(percentBuyBackStep * options.drawdownStep),
+      triggerPrice:
+        side === 'buy' ? averageEntryPrice - buyBackAmount : averageEntryPrice + buyBackAmount,
+    });
     console.log('deltaForSale => ', { deltaForSale: side === 'sell' ? +deltaForSale : 'none' });
     console.log('deltaForBuy => ', { deltaForBuy: side === 'buy' ? +deltaForBuy : 'none' });
-    console.log('unrealizedPnl => ', { unrealizedPnl });
+    console.log('pnl => ', {
+      perUnit: pnlPerUnit,
+      position: positionPnl,
+      ratio: unrealizedPnl,
+      percent: unrealizedPnl * 100,
+      entryAmount,
+    });
     console.log('lastPrice => ', { lastPrice });
     console.log('options => ', { options });
     console.log(
