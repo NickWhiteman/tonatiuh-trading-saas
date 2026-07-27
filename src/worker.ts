@@ -44,11 +44,11 @@ async function worker(nextConfig: ConfigType) {
 }
 
 let isStopping = false;
-async function stopWorker() {
+async function stopWorker(closePosition: boolean) {
   if (isStopping) return;
   isStopping = true;
   try {
-    await trading.endAlgorithms();
+    if (closePosition) await trading.endAlgorithms();
     process.exit(0);
   } catch (error) {
     console.error('Failed to stop trading worker:', error);
@@ -57,11 +57,14 @@ async function stopWorker() {
 }
 
 process.on('message', (message: { type?: string; config?: ConfigType }) => {
-  if (message?.type === 'stop') void stopWorker();
+  if (message?.type === 'stop') void stopWorker(true);
+  if (message?.type === 'suspend') void stopWorker(false);
   if (message?.type === 'start' && message.config && !config) void worker(message.config);
 });
-process.once('SIGTERM', () => void stopWorker());
-process.once('SIGINT', () => void stopWorker());
-process.once('disconnect', () => void stopWorker());
+// Process lifecycle signals are infrastructure events. They must never place a
+// closing order; only the explicit user STOP command is allowed to do that.
+process.once('SIGTERM', () => void stopWorker(false));
+process.once('SIGINT', () => void stopWorker(false));
+process.once('disconnect', () => void stopWorker(false));
 
 if (process.argv[2]) void worker(JSON.parse(process.argv[2]) as ConfigType);

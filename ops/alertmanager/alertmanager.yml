@@ -1,11 +1,11 @@
 route:
-  receiver: operations
+  receiver: local
   group_by: [alertname,severity]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
 receivers:
-  - name: operations
-    webhook_configs:
-      - url_file: /run/secrets/alert_webhook_url
-        send_resolved: true
+  # Alert delivery is intentionally configured separately: production must not
+  # contain a placeholder URL or credentials in source control. Alertmanager
+  # still groups and retains alerts until an operations receiver is provisioned.
+  - name: local

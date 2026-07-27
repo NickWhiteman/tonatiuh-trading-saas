@@ -66,3 +66,23 @@ groups:
         for: 30m
         labels: {severity: critical}
         annotations: {summary: "A data-subject request exceeded its response deadline",runbook: "docs/incidents/compliance.md"}
+      - alert: TonatiuhHostMemoryPressure
+        expr: 1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.85
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Host memory usage exceeds 85%"}
+      - alert: TonatiuhHostDiskPressure
+        expr: 1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) > 0.80
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "Root filesystem usage exceeds 80%"}
+      - alert: TonatiuhHostCpuPressure
+        expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.85
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "Host CPU usage exceeds 85%"}
+      - alert: TonatiuhContainerRestarting
+        expr: time() - container_start_time_seconds{name=~".*tonatiuh.*"} < 300
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "A Tonatiuh container restarted within the last five minutes"}

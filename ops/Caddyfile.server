@@ -13,7 +13,12 @@
     Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
     -Server
   }
-  reverse_proxy web:80
+  handle /monitoring/* {
+    reverse_proxy grafana:3000
+  }
+  handle {
+    reverse_proxy web:80
+  }
   log {
     output stdout
     format json
