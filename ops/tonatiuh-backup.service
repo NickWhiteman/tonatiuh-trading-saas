@@ -1,0 +1,8 @@
+[Unit]
+Description=Tonatiuh PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tonatiuh-backup-postgres

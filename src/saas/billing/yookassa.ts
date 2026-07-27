@@ -16,8 +16,17 @@ async function providerRequest<T>(path: string, init: RequestInit = {}): Promise
       });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const providerType = data && typeof data === 'object' && 'type' in data ? data.type : undefined;
-    console.error(JSON.stringify({ level: 'error', provider: 'yookassa', status: response.status, providerType }));
+    const providerError = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+    console.error(JSON.stringify({
+      level: 'error',
+      provider: 'yookassa',
+      status: response.status,
+      providerType: providerError.type,
+      providerCode: providerError.code,
+      providerDescription: providerError.description,
+      providerParameter: providerError.parameter,
+      providerErrorId: providerError.id,
+    }));
     throw new SaasHttpError(502, 'PAYMENT_PROVIDER_ERROR', 'Payment provider rejected the request.');
   }
   return data as T;
@@ -31,7 +40,8 @@ export function createInitialPayment(input: { organizationId:string; email:strin
   const config=getBillingConfig();
   return providerRequest('/payments',{method:'POST',headers:{'Idempotence-Key':input.idempotencyKey},body:JSON.stringify({
     amount:{value:amount(),currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:config.returnUrl},
-    description:`${config.planName}: subscription for one month`,save_payment_method:true,
+    description:`${config.planName}: subscription for one month`,
+    ...(config.savePaymentMethod?{save_payment_method:true}:{}),
     metadata:{organizationId:input.organizationId,kind:'INITIAL'},receipt:receipt(input.email)})});
 }
 export function createRecurringPayment(input:{organizationId:string;email:string;paymentMethodId:string;idempotencyKey:string}):Promise<YooPayment>{

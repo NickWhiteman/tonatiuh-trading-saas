@@ -1,0 +1,40 @@
+{
+  email {$ACME_EMAIL}
+  admin off
+}
+
+{$APP_DOMAIN} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+    -Server
+  }
+  reverse_proxy web:80
+  log {
+    output stdout
+    format json
+  }
+}
+
+{$API_DOMAIN} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+  reverse_proxy api:3131 {
+    health_uri /health/ready
+    health_interval 15s
+    health_timeout 3s
+  }
+  log {
+    output stdout
+    format json
+  }
+}

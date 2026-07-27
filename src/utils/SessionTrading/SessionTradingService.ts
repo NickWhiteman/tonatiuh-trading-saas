@@ -35,7 +35,6 @@ export class SessionTradingService implements ISessionTradingService {
   }
 
   public async initTradeSession(): Promise<{ typeSession: string; indexOperation: string }> {
-    await this._checkingIfThereOpenOrders();
     let indexOperation: string;
     const isActiveOldSession = await this._checkingActiveSession();
     console.log('_initTradeSession => ', isActiveOldSession);
@@ -104,7 +103,7 @@ export class SessionTradingService implements ISessionTradingService {
       usdt: balance.USDT.free,
       profitAll: allProfitSession ?? 0,
       exchangeName: this._exchange,
-      profitUsdt: prevBalance ? (prevBalance.profitUsdt + orders[0].side === 'buy' ? calculateProfitSession : 0) : 0,
+      profitUsdt: prevBalance ? prevBalance.profitUsdt + (orders[0].side === 'buy' ? calculateProfitSession : 0) : 0,
       balanceObject: JSON.stringify(balance),
     });
 
@@ -123,7 +122,7 @@ export class SessionTradingService implements ISessionTradingService {
 
   // TODO: Необходим рефакторинг - утилитарный класс для подобного рода операций.
   private async _checkingIfClosingOrderHasBeenCreated(orders: OrderType[], indexSession: string): Promise<void> {
-    orders.find(async (order) => {
+    for (const order of orders) {
       if (orders[0].side !== order.side) {
         const calculationProfit = await this.calculateProfitSession(indexSession, orders);
         await this.saveBalanceState(calculationProfit, orders);
@@ -132,19 +131,6 @@ export class SessionTradingService implements ISessionTradingService {
         await this._OrdersOperationService.clearingOrderList();
         throw new Error('The completed session was initialized!');
       }
-    });
-  }
-
-  private async _checkingIfThereOpenOrders() {
-    let orenOrders = await this._ExchangeService.getOpenOrders(this._symbol);
-
-    while (orenOrders.length !== 0) {
-      await this._sleepTimeout(5000);
-      orenOrders = await this._ExchangeService.getOpenOrders(this._symbol);
     }
-  }
-
-  private async _sleepTimeout(ms: number) {
-    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

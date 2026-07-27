@@ -1,0 +1,176 @@
+name: tonatiuh-production
+
+x-backend: &backend
+  build: .
+  env_file: .env.server
+  init: true
+  restart: unless-stopped
+  networks: [backend, egress]
+  security_opt: [no-new-privileges:true]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: tonatiuh
+      POSTGRES_USER: tonatiuh
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tonatiuh -d tonatiuh"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks: [backend, db-access]
+    security_opt: [no-new-privileges:true]
+
+  migrate:
+    <<: *backend
+    restart: "no"
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets: [database_url, jwt_secret]
+    command: ["node", "build/saas/migrate.js"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *backend
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_ROLE: tonatiuh_api
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      METRICS_TOKEN_FILE: /run/secrets/metrics_token
+      EMAIL_WEBHOOK_TOKEN_FILE: /run/secrets/email_webhook_token
+      CONSENT_EVIDENCE_SECRET_FILE: /run/secrets/consent_evidence_secret
+      YOOKASSA_SECRET_KEY_FILE: /run/secrets/yookassa_secret_key
+    secrets: [postgres_password, database_url, jwt_secret, encryption_key, metrics_token, email_webhook_token, consent_evidence_secret, yookassa_secret_key]
+    expose: ["3131"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3131/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+
+  trading-worker:
+    <<: *backend
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      SAAS_BOT_DATA_DIR: /app/data
+    secrets: [postgres_password, database_url, jwt_secret, encryption_key]
+    command: ["node", "build/saas/worker.js"]
+    volumes: [bot-data:/app/data]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  email-worker:
+    <<: *backend
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets: [postgres_password, database_url, jwt_secret, encryption_key, smtp_password]
+    command: ["node", "build/saas/email/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  billing-worker:
+    <<: *backend
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      YOOKASSA_SECRET_KEY_FILE: /run/secrets/yookassa_secret_key
+    secrets: [postgres_password, database_url, jwt_secret, encryption_key, yookassa_secret_key]
+    command: ["node", "build/saas/billing/renewals.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  retention-worker:
+    <<: *backend
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_ROLE: tonatiuh_worker
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    secrets: [database_url, jwt_secret]
+    command: ["node", "build/saas/retention/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  web:
+    build:
+      context: ../tonatiuh-trading-web
+      args:
+        VITE_API_BASE_URL: https://${API_DOMAIN}
+        VITE_RELEASE: ${RELEASE}
+    restart: unless-stopped
+    networks: [backend]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  proxy:
+    image: caddy:2.10.0-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./ops/Caddyfile.server:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    networks: [backend, egress]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      api: {condition: service_healthy}
+      web: {condition: service_healthy}
+
+networks:
+  backend: {internal: true}
+  db-access: {}
+  egress: {}
+
+volumes:
+  postgres-data:
+  bot-data:
+  caddy-data:
+  caddy-config:
+
+secrets:
+  postgres_password: {file: /etc/tonatiuh/secrets/postgres_password}
+  database_url: {file: /etc/tonatiuh/secrets/database_url}
+  jwt_secret: {file: /etc/tonatiuh/secrets/jwt_secret}
+  encryption_key: {file: /etc/tonatiuh/secrets/encryption_key}
+  smtp_password: {file: /etc/tonatiuh/secrets/smtp_password}
+  metrics_token: {file: /etc/tonatiuh/secrets/metrics_token}
+  email_webhook_token: {file: /etc/tonatiuh/secrets/email_webhook_token}
+  consent_evidence_secret: {file: /etc/tonatiuh/secrets/consent_evidence_secret}
+  yookassa_secret_key: {file: /etc/tonatiuh/secrets/yookassa_secret_key}

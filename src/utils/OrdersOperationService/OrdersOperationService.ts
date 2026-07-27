@@ -41,6 +41,24 @@ export class OrdersOperationService implements IOrdersOperationService {
   }
   public async setOrders(orders: OrderType[]): Promise<void> {
     this.orders = orders;
+    for (const stored of orders) {
+      let rawOrder: Partial<Order> = {};
+      try {
+        rawOrder = typeof stored.order === 'string' ? JSON.parse(stored.order) : stored.order;
+      } catch {
+        rawOrder = {};
+      }
+      this._publishOrder({
+        ...rawOrder,
+        id: stored.orderId,
+        symbol: stored.symbol,
+        side: stored.side,
+        type: rawOrder.type ?? 'limit',
+        status: rawOrder.status ?? 'open',
+        amount: stored.amount,
+        price: stored.price,
+      } as Order);
+    }
   }
 
   public async getAllOrdersByIndexOperation(indexSession: string): Promise<OrderType[] | undefined> {
@@ -255,21 +273,67 @@ export class OrdersOperationService implements IOrdersOperationService {
     this.orders = [];
   }
 
+  public async closeFilledPosition(symbol: string, indexOperation?: string): Promise<Order | undefined> {
+    await this.cancelAllOrders(symbol);
+    if (!this.orders.length) return;
+
+    const entrySide = this.orders[0].side;
+    let netAmount = 0;
+    for (const order of this.orders) {
+      const exchangeOrderId = order.orderId || String(order.id);
+      const status = await this._ExchangeService.checkStatusOrderById(exchangeOrderId, symbol).catch(() => undefined);
+      if (status) this._publishOrder(status);
+      const filled = Number(status?.filled ?? 0);
+      netAmount += order.side === entrySide ? filled : -filled;
+    }
+
+    if (netAmount <= 0) return;
+    const side: ModeType = entrySide === 'buy' ? 'sell' : 'buy';
+    const price = await this._ExchangeService.getPrice(symbol);
+    const submittedClosingOrder = await this._ExchangeService.createOrder({
+      symbol,
+      type: 'market',
+      side,
+      amount: netAmount,
+      price,
+    });
+    this._publishOrder(submittedClosingOrder);
+    const closingOrder = await this._waitForExecution(submittedClosingOrder, symbol);
+
+    if (indexOperation) {
+      await this._saveActivatedOrder({
+        order: closingOrder,
+        orderId: closingOrder.id,
+        price: Number(closingOrder.average ?? closingOrder.price ?? price),
+        amount: Number(closingOrder.filled ?? closingOrder.amount ?? netAmount),
+        side,
+        symbol,
+        indexOperation,
+      });
+    }
+    this.orders.push(closingOrder);
+    return closingOrder;
+  }
+
   public async openPositionForStrategy({
     side,
     settingOrder,
     indexOperation,
   }: OpenPositionForStrategyType): Promise<Order> {
-    const newOrder = await this._openPositionForAlgorithm({
+    const submittedOrder = await this._openPositionForAlgorithm({
       ...settingOrder,
       side: side,
     });
+    this._publishOrder(submittedOrder);
+    const newOrder = await this._waitForExecution(submittedOrder, settingOrder.symbol);
+    const executedPrice = Number(newOrder.average ?? newOrder.price ?? settingOrder.price);
+    const executedAmount = Number(newOrder.filled ?? newOrder.amount ?? settingOrder.amount);
 
     await this._saveActivatedOrder({
       order: newOrder,
       orderId: newOrder.id,
-      price: settingOrder.price,
-      amount: settingOrder.amount,
+      price: executedPrice,
+      amount: executedAmount,
       side: side,
       symbol: newOrder.symbol,
       indexOperation: indexOperation,
@@ -278,6 +342,66 @@ export class OrdersOperationService implements IOrdersOperationService {
     this.orders.push(newOrder);
 
     return newOrder;
+  }
+
+  private async _waitForExecution(order: Order, symbol: string): Promise<Order> {
+    if (Number(order.filled ?? 0) > 0 && order.status === 'closed') {
+      this._publishOrder(order);
+      return order;
+    }
+
+    let latest = order;
+    let publishedState = '';
+    for (let attempt = 0; attempt < 60; attempt++) {
+      latest = await this._ExchangeService.checkStatusOrderById(order.id, symbol);
+      const state = `${latest.status}:${latest.filled ?? 0}:${latest.remaining ?? ''}`;
+      if (state !== publishedState) {
+        this._publishOrder(latest);
+        publishedState = state;
+      }
+      if (latest.status === 'closed' && Number(latest.filled ?? 0) > 0) return latest;
+      if (['canceled', 'rejected', 'expired'].includes(String(latest.status))) {
+        if (Number(latest.filled ?? 0) > 0) return latest;
+        throw new Error(`Order ${order.id} was ${latest.status} before execution.`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    await this._ExchangeService.cancelAllOrders(symbol);
+    latest = await this._ExchangeService.checkStatusOrderById(order.id, symbol);
+    this._publishOrder(latest);
+    if (Number(latest.filled ?? 0) > 0) return latest;
+    throw new Error(`Order ${order.id} was not executed within 60 seconds.`);
+  }
+
+  private _publishOrder(order: Order): void {
+    if (!process.send || !order.id || !order.symbol || !order.side || !order.type) return;
+    const filledQuantity = Number(order.filled ?? 0);
+    const quantity = filledQuantity > 0 ? filledQuantity : Number(order.amount ?? 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    process.send({
+      type: 'order-update',
+      order: {
+        exchangeOrderId: String(order.id),
+        clientOrderId: order.clientOrderId ? String(order.clientOrderId) : `exchange-${order.id}`,
+        symbol: order.symbol,
+        side: order.side.toUpperCase(),
+        orderType: order.type.toUpperCase(),
+        status: this._dashboardOrderStatus(order),
+        quantity,
+        price: order.price === undefined || order.price === null ? null : Number(order.price),
+        rawResponse: order.info ?? {},
+      },
+    });
+  }
+
+  private _dashboardOrderStatus(order: Order): string {
+    if (order.status === 'closed') return 'FILLED';
+    if (order.status === 'canceled') return 'CANCELLED';
+    if (order.status === 'rejected') return 'REJECTED';
+    if (order.status === 'expired') return 'EXPIRED';
+    if (Number(order.filled ?? 0) > 0) return 'PARTIALLY_FILLED';
+    return 'OPEN';
   }
 
   private async _openPositionForAlgorithm(params: CreateOpenPositionType): Promise<Order> {

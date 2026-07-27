@@ -352,6 +352,12 @@ paths:
       operationId: stopBot
       parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
       responses: {'202': {description: Command accepted}, default: {$ref: '#/components/responses/Error'}}
+  /api/v1/bots/{id}/emergency-stop:
+    post:
+      tags: [Bots]
+      operationId: emergencyStopBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'202': {description: Emergency stop command accepted}, default: {$ref: '#/components/responses/Error'}}
   /api/v1/bots/{id}/restart:
     post:
       tags: [Bots]

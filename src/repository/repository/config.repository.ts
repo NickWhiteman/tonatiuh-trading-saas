@@ -69,7 +69,7 @@ export class ConfigRepository extends AbstractRepository {
   }
 
   async createConfig(config: ConfigType): Promise<void> {
-    const { apiKey, privateKey, password, id, ...configTemp } = config;
+    const { apiKey, privateKey, password, id, isConfigUpdated, ...configTemp } = config;
 
     const encryptedConfig = {
       ...configTemp,
@@ -82,6 +82,26 @@ export class ConfigRepository extends AbstractRepository {
       tableName: this.tableName,
       value: this._mappingValuesList(encryptedConfig),
     });
+  }
+
+  async syncRuntimeConfig(config: ConfigType): Promise<void> {
+    const configs = await this.getConfig();
+    const existing = configs.find((item) => item.id === config.id);
+
+    if (existing) {
+      await this.updateConfig(config, config.id);
+      return;
+    }
+
+    if (configs.length > 0) {
+      throw new Error(`Runtime config ${config.id} was not found in a non-empty config database.`);
+    }
+
+    await this.createConfig(config);
+    const created = (await this.getConfig())[0];
+    if (!created || created.id !== config.id) {
+      throw new Error(`Runtime config was created with id ${created?.id ?? 'unknown'} instead of ${config.id}.`);
+    }
   }
 
   async getEmergencyStop(configId: number): Promise<{ isEmergencyStop: boolean }> {
@@ -172,7 +192,7 @@ export class ConfigRepository extends AbstractRepository {
   }
 
   async updateConfig(config: Partial<ConfigType>, configId: number) {
-    const { apiKey, privateKey, password, ...configTemp } = config;
+    const { apiKey, privateKey, password, isConfigUpdated, ...configTemp } = config;
 
     const configMapping: { [key: string]: any } = {};
 

@@ -5,6 +5,7 @@
 .env
 .env.production
 .env.docker
+.env.server
 sessions.json
 .vscode
 /databases
