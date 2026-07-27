@@ -7,6 +7,7 @@ import { localCorsOrigin } from './middleware/local-api-security';
 import { apiRouter } from './saas/api';
 import { API_V1_PREFIX, legacyApiDeprecation, LEGACY_API_PREFIX } from './saas/api-versioning';
 import { errorHandler, requestContext } from './saas/http/middleware';
+import { memoryRateLimit } from './saas/http/rate-limit';
 import { healthRouter } from './saas/observability/health';
 import { metricsRouter, observeRequests } from './saas/observability/metrics';
 
@@ -27,8 +28,9 @@ export function createApp(mountAdditionalRoutes?: (app: Express) => void): Expre
   app.use(observeRequests);
   app.use('/health', healthRouter);
   app.use('/metrics', metricsRouter);
-  app.use(API_V1_PREFIX,apiRouter);
-  app.use(LEGACY_API_PREFIX,legacyApiDeprecation,apiRouter);
+  const apiRateLimit = memoryRateLimit(120, 60_000);
+  app.use(API_V1_PREFIX,apiRateLimit,apiRouter);
+  app.use(LEGACY_API_PREFIX,apiRateLimit,legacyApiDeprecation,apiRouter);
 
   mountAdditionalRoutes?.(app);
   app.use(errorHandler);

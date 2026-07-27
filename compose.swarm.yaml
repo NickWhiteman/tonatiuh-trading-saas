@@ -23,6 +23,26 @@ x-backend: &backend
 services:
   postgres:
     image: postgres:17-alpine
+    command:
+      - postgres
+      - -c
+      - max_connections=150
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=6GB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_compression=on
+      - -c
+      - random_page_cost=1.1
     environment:
       POSTGRES_DB: tonatiuh
       POSTGRES_USER: tonatiuh
@@ -46,6 +66,26 @@ services:
       resources:
         reservations: {cpus: "0.50", memory: 512M}
         limits: {cpus: "2.00", memory: 4G}
+
+  pgbouncer:
+    image: tonatiuh-production-pgbouncer:${RELEASE}
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 6432"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      replicas: 2
+      restart_policy: {condition: any, delay: 5s}
+      update_config: {parallelism: 1, delay: 5s, order: start-first, failure_action: rollback, monitor: 20s}
+      rollback_config: {parallelism: 1, order: stop-first}
+      resources:
+        reservations: {cpus: "0.05", memory: 32M}
+        limits: {cpus: "0.25", memory: 128M}
 
   api:
     <<: *backend
@@ -196,6 +236,106 @@ services:
         reservations: {cpus: "0.10", memory: 64M}
         limits: {cpus: "0.50", memory: 256M}
 
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    secrets: [metrics_token]
+    networks: [backend]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: {condition: any, delay: 5s}
+      resources:
+        reservations: {cpus: "0.15", memory: 256M}
+        limits: {cpus: "0.75", memory: 1G}
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./ops/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks: [backend]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: {condition: any, delay: 5s}
+      resources:
+        reservations: {cpus: "0.05", memory: 64M}
+        limits: {cpus: "0.25", memory: 256M}
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_SERVER_ROOT_URL: https://${APP_DOMAIN}/monitoring/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_STRICT_TRANSPORT_SECURITY: "true"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    secrets: [grafana_admin_password]
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [backend]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: {condition: any, delay: 5s}
+      resources:
+        reservations: {cpus: "0.10", memory: 128M}
+        limits: {cpus: "0.50", memory: 512M}
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/metrics
+    volumes:
+      - /:/host:ro,rslave
+      - /opt/tonatiuh/backup-metrics:/metrics:ro
+    networks: [backend]
+    deploy:
+      mode: global
+      restart_policy: {condition: any, delay: 5s}
+      resources:
+        limits: {cpus: "0.20", memory: 128M}
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    command: [--docker_only=true, --housekeeping_interval=30s]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks: [backend]
+    deploy:
+      mode: global
+      restart_policy: {condition: any, delay: 5s}
+      resources:
+        limits: {cpus: "0.30", memory: 256M}
+
 networks:
   backend:
     driver: overlay
@@ -218,10 +358,13 @@ volumes:
   caddy-config:
     external: true
     name: tonatiuh-production_caddy-config
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
 
 secrets:
   postgres_password: {external: true, name: tonatiuh-production_postgres_password}
-  database_url: {external: true, name: tonatiuh-production_database_url}
+  database_url: {external: true, name: tonatiuh-production_database_url_v2}
   jwt_secret: {external: true, name: tonatiuh-production_jwt_secret}
   encryption_key: {external: true, name: tonatiuh-production_encryption_key}
   smtp_password: {external: true, name: tonatiuh-production_smtp_password}
@@ -229,3 +372,4 @@ secrets:
   email_webhook_token: {external: true, name: tonatiuh-production_email_webhook_token}
   consent_evidence_secret: {external: true, name: tonatiuh-production_consent_evidence_secret}
   yookassa_secret_key: {external: true, name: tonatiuh-production_yookassa_secret_key}
+  grafana_admin_password: {external: true, name: tonatiuh-production_grafana_admin_password_v2}

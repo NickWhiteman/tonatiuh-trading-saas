@@ -246,6 +246,29 @@ async function stopBot(botId: string): Promise<void> {
   );
 }
 
+async function suspendBot(botId: string): Promise<void> {
+  const child = processes.get(botId);
+  processes.delete(botId);
+  if (child?.exitCode === null) {
+    if (child.connected) child.send({ type: 'suspend' });
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGKILL');
+        resolve();
+      }, stopTimeoutMs);
+      timer.unref();
+      child.once('exit', () => { clearTimeout(timer); resolve(); });
+    });
+  }
+  await flushRuntimeLogs(botId);
+  await saasQuery(
+    `UPDATE trading_bots SET actual_state='STARTING',worker_instance_id=NULL,worker_pid=NULL,
+       heartbeat_at=now(),last_error=NULL,updated_at=now()
+     WHERE id=$1 AND desired_state='RUNNING'`,
+    [botId],
+  );
+}
+
 async function claimCommand(): Promise<BotCommand | undefined> {
   return saasTransaction(async (client) => {
     const result = await client.query<BotCommand>(
@@ -288,7 +311,10 @@ async function runLeader(client: PoolClient): Promise<void> {
     else await new Promise((resolve) => setTimeout(resolve, pollMs));
     if (processes.size) await saasQuery("UPDATE trading_bots SET heartbeat_at=now() WHERE worker_instance_id=$1 AND actual_state='RUNNING'", [instanceId]);
   }
-  await Promise.all([...processes.keys()].map(stopBot));
+  // A deployment or host shutdown is not a user trading command. Preserve all
+  // exchange positions and only relinquish local bot processes for reconciliation
+  // by the next leader.
+  await Promise.all([...processes.keys()].map(suspendBot));
   await Promise.all([...orderWrites.values()]);
   await Promise.all([...runtimeLogBuffers.keys()].map(flushRuntimeLogs));
   await client.query("SELECT pg_advisory_unlock(hashtext('tonatiuh-saas-worker-leader'))");

@@ -14,7 +14,6 @@ export function getSaasPool(): Pool {
       idleTimeoutMillis: config.databaseIdleTimeoutMs,
       connectionTimeoutMillis: config.databaseConnectionTimeoutMs,
       application_name: 'tonatiuh-trading-saas',
-      ...(config.databaseRole ? { options: `-c role=${config.databaseRole}` } : {}),
     });
     pool.on('error',(error)=>logger.error({err:error},'unexpected PostgreSQL pool error'));
   }
@@ -32,6 +31,11 @@ export async function saasTransaction<T>(work: (client: PoolClient) => Promise<T
   const client = await getSaasPool().connect();
   try {
     await client.query('BEGIN');
+    const databaseRole = getSaasConfig().databaseRole;
+    if (databaseRole) {
+      if (!['tonatiuh_api', 'tonatiuh_worker'].includes(databaseRole)) throw new Error('Unsupported DATABASE_ROLE.');
+      await client.query(`SET LOCAL ROLE ${databaseRole}`);
+    }
     await applyDatabaseContext(client);
     const result = await work(client);
     await client.query('COMMIT');

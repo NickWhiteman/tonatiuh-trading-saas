@@ -7,12 +7,19 @@ umask 077
 : "${BACKUP_DIR:=/backups}"
 : "${BACKUP_RETENTION_DAYS:=35}"
 : "${BACKUP_PRUNE:=false}"
+: "${BACKUP_REMOTE:=}"
+: "${RCLONE_CONFIG_FILE:=}"
 
 case "$BACKUP_RETENTION_DAYS" in *[!0-9]*|'') echo 'BACKUP_RETENTION_DAYS must be a positive integer.' >&2;exit 2;; esac
 [ "$BACKUP_RETENTION_DAYS" -gt 0 ] || { echo 'BACKUP_RETENTION_DAYS must be positive.' >&2;exit 2; }
 case "$BACKUP_PRUNE" in true|false) :;; *) echo 'BACKUP_PRUNE must be true or false.' >&2;exit 2;; esac
 [ -f "$DATABASE_URL_FILE" ] || { echo 'Database URL secret was not found.' >&2;exit 2; }
 [ -f "$AGE_RECIPIENT_FILE" ] || { echo 'age recipient file was not found.' >&2;exit 2; }
+if [ -n "$BACKUP_REMOTE" ] || [ -n "$RCLONE_CONFIG_FILE" ];then
+  [ -n "$BACKUP_REMOTE" ] && [ -f "$RCLONE_CONFIG_FILE" ] || {
+    echo 'BACKUP_REMOTE and an existing RCLONE_CONFIG_FILE must be provided together.' >&2;exit 2;
+  }
+fi
 mkdir -p "$BACKUP_DIR"
 
 database_url=$(tr -d '\r\n' < "$DATABASE_URL_FILE")
@@ -51,6 +58,17 @@ printf '{"schemaVersion":1,"createdAt":"%s","archive":"%s","sha256":"%s","sizeBy
 mv "$archive_tmp" "$archive"
 mv "$checksum_tmp" "$checksum"
 mv "$manifest_tmp" "$manifest"
+
+if [ -n "$BACKUP_REMOTE" ];then
+  remote_dir="${BACKUP_REMOTE%/}/$base"
+  rclone --config "$RCLONE_CONFIG_FILE" copyto "$archive" "$remote_dir/$base.dump.age"
+  rclone --config "$RCLONE_CONFIG_FILE" copyto "$checksum" "$remote_dir/$base.dump.age.sha256"
+  rclone --config "$RCLONE_CONFIG_FILE" copyto "$manifest" "$remote_dir/$base.manifest.json"
+  remote_size=$(rclone --config "$RCLONE_CONFIG_FILE" size --json "$remote_dir" | sed -n 's/.*"bytes":\([0-9][0-9]*\).*/\1/p')
+  [ -n "$remote_size" ] && [ "$remote_size" -ge "$archive_size" ] || {
+    echo 'Remote backup verification failed.' >&2;exit 1;
+  }
+fi
 
 if [ -n "${BACKUP_METRICS_FILE:-}" ];then
   metrics_tmp="$BACKUP_METRICS_FILE.tmp.$$"
