@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { Router } from 'express';
 import { EncryptionService } from '../../plugins/EncryptionService/EncryptionService';
-import { tokens, saveRefresh } from '../auth/router';
+import { tokens, saveRefresh, setRefreshCookie } from '../auth/router';
 import { saasQuery, saasTransaction } from '../db/pool';
 import { authContext, requireRoles, Role } from '../http/authorization';
 import { notFound, SaasHttpError } from '../http/errors';
@@ -22,7 +22,7 @@ organizationsRouter.get('/',async(req,res,next)=>{try{const auth=authContext(req
 organizationsRouter.post('/switch',async(req,res,next)=>{try{const auth=authContext(req);const body=objectValue(req.body,['organizationId']);const organizationId=uuidValue(body.organizationId,'organizationId');
   const membership=(await saasQuery<{role:Role}>('SELECT m.role FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id WHERE m.user_id=$1 AND m.organization_id=$2 AND o.status=\'ACTIVE\'',[auth.userId,organizationId])).rows[0];
   if(!membership)throw notFound('Organization membership was not found.');const session=tokens(auth.userId,organizationId,membership.role);await saveRefresh(auth.userId,organizationId,session.refreshToken);
-  await writeAuditEvent(req,'ORGANIZATION_SWITCHED','organization',organizationId);res.json(session);
+  await writeAuditEvent(req,'ORGANIZATION_SWITCHED','organization',organizationId);setRefreshCookie(res,session.refreshToken);res.json(session);
 }catch(error){next(error);}});
 
 organizationsRouter.get('/members',async(req,res,next)=>{try{const auth=authContext(req);const result=await saasQuery(`SELECT u.id,u.email,u.display_name,m.role,m.created_at
