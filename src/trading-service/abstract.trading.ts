@@ -36,6 +36,7 @@ import {
   calculateBuyBackAmount,
   calculateBuyBackOrderAmount,
   calculatePositionMetrics,
+  resolvePositionSide,
 } from './trading-math';
 
 export abstract class AbstractTradingClass {
@@ -193,7 +194,10 @@ export abstract class AbstractTradingClass {
         );
 
         if ((side === 'sell' && lastPrice <= targetStopProfit) || (side === 'buy' && lastPrice >= targetStopProfit)) {
-          const closingOrder = await this._OrdersOperationService.closeFilledPosition(this._SYMBOL, this._indexOperation);
+          const closingOrder = await this._OrdersOperationService.closeFilledPosition(
+            this._SYMBOL,
+            this._indexOperation,
+          );
           if (!closingOrder) return false;
           console.log('Tracker done!');
           return true;
@@ -279,13 +283,7 @@ export abstract class AbstractTradingClass {
   }
 
   private async _watchingProcess(param: WatchingProcessParamType): Promise<void> {
-    const {
-      settingForFirstOrder,
-      firstOrder,
-      price,
-      watchingTakeProfitLogic,
-      watchingGridLogic,
-    } = param;
+    const { settingForFirstOrder, firstOrder, price, watchingTakeProfitLogic, watchingGridLogic } = param;
     const options: OptionType = {
       buyingBack: settingForFirstOrder ? +settingForFirstOrder.amount : 0,
       drawdownStep: this._OrdersOperationService.orders.length ?? 1,
@@ -294,23 +292,25 @@ export abstract class AbstractTradingClass {
     while (this._OrdersOperationService.orders.length !== 0) {
       await this._reloadConfig(this._config.id);
       const balance: BalanceType = await this._ExchangeService.getBalance();
-      const side = this._OrdersOperationService.orders[this._OrdersOperationService.orders.length - 1].side;
+      const entrySide = resolvePositionSide(
+        firstOrder?.side,
+        this._OrdersOperationService.orders.map((order) => order.side),
+      );
+      const side = entrySide;
       const { firstCurrency, secondCurrency } = await this._getCurrencyBreakdown(this._SYMBOL);
       const nativeCurrency = side === 'sell' ? firstCurrency : secondCurrency;
       const lastPrice = await this._ExchangeService.getPrice(this._SYMBOL);
-      const entrySide = firstOrder ? firstOrder.side : this._OrdersOperationService.orders[0].side;
       const entryOrders = this._OrdersOperationService.orders.filter((order) => order.side === entrySide);
       const entryAmount = entryOrders.reduce((sum, order) => sum + Number(order.amount), 0);
       const averageEntryPrice =
         entryAmount > 0
           ? entryOrders.reduce((sum, order) => sum + Number(order.price) * Number(order.amount), 0) / entryAmount
           : price;
-      const { pnlPerUnit, pnlRatio: unrealizedPnl, positionPnl } = calculatePositionMetrics(
-        entrySide,
-        averageEntryPrice,
-        lastPrice,
-        entryAmount,
-      );
+      const {
+        pnlPerUnit,
+        pnlRatio: unrealizedPnl,
+        positionPnl,
+      } = calculatePositionMetrics(entrySide, averageEntryPrice, lastPrice, entryAmount);
       const buyBackAmount = calculateBuyBackAmount(
         averageEntryPrice,
         this._config.percentBuyBackStep,
@@ -325,7 +325,7 @@ export abstract class AbstractTradingClass {
       const deltaForBuy = await this._getDeltaForBuy({ side, buyingBack: options.buyingBack, price, lastPrice });
       const settingTakeProfit: SettingOrderType = {
         ...settingForFirstOrder,
-        type: 'market',
+        type: 'limit',
         price: lastPrice,
         amount: side === 'sell' ? options.buyingBack + deltaForSale : options.buyingBack - deltaForBuy,
       };
@@ -372,7 +372,10 @@ export abstract class AbstractTradingClass {
 
       if (!watchingGridLogic) {
         if (this._config.stopLoss && unrealizedPnl <= -this._config.stopLoss) {
-          const closingOrder = await this._OrdersOperationService.closeFilledPosition(this._SYMBOL, this._indexOperation);
+          const closingOrder = await this._OrdersOperationService.closeFilledPosition(
+            this._SYMBOL,
+            this._indexOperation,
+          );
           if (closingOrder) await this._endTradeSession(deltaForSale);
           break;
         }

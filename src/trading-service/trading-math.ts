@@ -6,6 +6,15 @@ export type PositionMetrics = {
   positionPnl: number;
 };
 
+export function resolvePositionSide(
+  firstOrderSide: ModeType | undefined,
+  orderSides: ModeType[],
+): ModeType {
+  const positionSide = firstOrderSide ?? orderSides[0];
+  if (!positionSide) throw new Error('Position side requires at least one entry order.');
+  return positionSide;
+}
+
 export function calculatePositionMetrics(
   entrySide: ModeType,
   averageEntryPrice: number,
