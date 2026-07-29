@@ -20,7 +20,8 @@ export function createApp(mountAdditionalRoutes?: (app: Express) => void): Expre
   app.use(helmet());
   app.use(cors({
     origin: localCorsOrigin,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id', 'X-CSRF-Protection'],
     exposedHeaders: ['Deprecation','Sunset','Link','X-Request-Id','Retry-After'],
   }));
   app.use(bodyParser.json({ limit: '1mb' }));

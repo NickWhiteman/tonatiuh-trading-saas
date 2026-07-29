@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Router } from 'express';
+import { Request, Response, Router } from 'express';
 import { getSaasConfig } from '../config';
 import { saasQuery, saasTransaction } from '../db/pool';
 import { SaasHttpError, notFound } from '../http/errors';
@@ -15,9 +15,44 @@ import {getComplianceConfig} from '../compliance/config';
 import {authContext} from '../http/authorization';
 
 export const authRouter = Router();
+const refreshCookieName = 'tonatiuh_refresh';
 type AccountRow = { id: string; email: string; display_name: string; password_hash: string; status:string; organization_id: string; organization_name: string; role: AccessPayload['role'] };
 const dummyPasswordHash = 'scrypt$01010101010101010101010101010101$ffb601a03950e409b51a01307ea013f1294b4dd0d841f26a2105d4a31e825bea6c32a145a5a6c75963225d2bc95ac1dc5999f6c3f22dfe5c83cae2762e4b9f56';
 const subjectHash=(email:string)=>evidenceHash(email.toLowerCase(),getComplianceConfig().evidenceSecret);
+
+function cookieValue(req: Request, name: string): string | undefined {
+  const header = req.headers.cookie;
+  if (!header) return undefined;
+  for (const item of header.split(';')) {
+    const separator = item.indexOf('=');
+    if (separator < 0 || item.slice(0, separator).trim() !== name) continue;
+    try { return decodeURIComponent(item.slice(separator + 1).trim()); } catch { return undefined; }
+  }
+  return undefined;
+}
+
+function refreshCookie(token: string, maxAgeSeconds: number): string {
+  const secure = process.env.ENV_RELEASE === 'prod' ? '; Secure' : '';
+  return `${refreshCookieName}=${encodeURIComponent(token)}; HttpOnly${secure}; SameSite=Lax; Path=/api/v1/auth; Max-Age=${maxAgeSeconds}; Priority=High`;
+}
+
+export function setRefreshCookie(res: Response, token: string): void {
+  res.setHeader('Set-Cookie', refreshCookie(token, getSaasConfig().refreshTokenTtlSeconds));
+}
+
+export function clearRefreshCookie(res: Response): void {
+  res.setHeader('Set-Cookie', refreshCookie('', 0));
+}
+
+function refreshTokenFromRequest(req: Request): string | undefined {
+  return cookieValue(req, refreshCookieName);
+}
+
+function requireCookieCsrfHeader(req: Request, cookieToken: string | undefined): void {
+  if (cookieToken && req.get('X-CSRF-Protection') !== '1') {
+    throw new SaasHttpError(403, 'CSRF_PROTECTION_REQUIRED', 'CSRF protection header is required.');
+  }
+}
 
 function emailValue(value: unknown): string {
   const email = stringValue(value, 'email', 320).toLowerCase();
@@ -86,6 +121,7 @@ authRouter.post('/login',databaseRateLimit('login',10,900), async (req, res, nex
     if(account.status==='PENDING')throw new SaasHttpError(403,'EMAIL_NOT_VERIFIED','Email verification is required.');
     const session = tokens(account.id, account.organization_id, account.role);
     await saveRefresh(account.id,account.organization_id,session.refreshToken);
+    setRefreshCookie(res, session.refreshToken);
     res.json({ user: { id: account.id, email: account.email, displayName: account.display_name }, organization: { id: account.organization_id, name: account.organization_name }, ...session });
   } catch (error) { next(error); }
 });
@@ -126,8 +162,10 @@ authRouter.post('/reset-password',databaseRateLimit('reset-password',5,3600),asy
 
 authRouter.post('/refresh', async (req, res, next) => {
   try {
-    const body = objectValue(req.body, ['refreshToken']);
-    const oldToken = stringValue(body.refreshToken, 'refreshToken', 500);
+    const cookieToken = refreshTokenFromRequest(req);
+    requireCookieCsrfHeader(req, cookieToken);
+    const body = objectValue(req.body ?? {}, ['refreshToken']);
+    const oldToken = cookieToken ?? stringValue(body.refreshToken, 'refreshToken', 500);
     const rotation = await saasTransaction(async (client) => {
       const result = await client.query<{ id: string; user_id: string; organization_id:string; family_id: string; revoked_at: Date | null; expires_at: Date }>(
         'SELECT id,user_id,organization_id,family_id,revoked_at,expires_at FROM refresh_tokens WHERE token_hash=$1 FOR UPDATE', [hashRefreshToken(oldToken)],
@@ -154,14 +192,22 @@ authRouter.post('/refresh', async (req, res, next) => {
       return { reused: false as const, session: nextSession };
     });
     if (rotation.reused) throw new SaasHttpError(401, 'REFRESH_TOKEN_REUSED', 'Refresh token reuse was detected.');
+    setRefreshCookie(res, rotation.session.refreshToken);
     res.json(rotation.session);
-  } catch (error) { next(error); }
+  } catch (error) {
+    clearRefreshCookie(res);
+    next(error);
+  }
 });
 
 authRouter.post('/logout', async (req, res, next) => {
   try {
-    const body = objectValue(req.body, ['refreshToken']);
-    await saasQuery('UPDATE refresh_tokens SET revoked_at=COALESCE(revoked_at, now()) WHERE token_hash=$1', [hashRefreshToken(stringValue(body.refreshToken, 'refreshToken', 500))]);
+    const cookieToken = refreshTokenFromRequest(req);
+    requireCookieCsrfHeader(req, cookieToken);
+    const body = objectValue(req.body ?? {}, ['refreshToken']);
+    const token = cookieToken ?? (body.refreshToken === undefined ? undefined : stringValue(body.refreshToken, 'refreshToken', 500));
+    if (token) await saasQuery('UPDATE refresh_tokens SET revoked_at=COALESCE(revoked_at, now()) WHERE token_hash=$1', [hashRefreshToken(token)]);
+    clearRefreshCookie(res);
     res.status(204).end();
   } catch (error) { next(error); }
 });

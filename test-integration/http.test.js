@@ -89,6 +89,32 @@ describe('SaaS HTTP lifecycle', () => {
     assert.equal(dataRequest.status,202,JSON.stringify(dataRequest.body));assert.equal(dataRequest.body.status,'REQUESTED');state.dataRequestId=dataRequest.body.id;
   });
 
+  it('restores and revokes a browser session through an HttpOnly cookie', async () => {
+    const login = await request(app).post(`${api}/auth/login`).send({ email: ownerEmail, password });
+    assert.equal(login.status, 200, JSON.stringify(login.body));
+    const setCookie = login.headers['set-cookie'];
+    assert.ok(Array.isArray(setCookie) && setCookie.length === 1);
+    assert.match(setCookie[0], /tonatiuh_refresh=/);
+    assert.match(setCookie[0], /HttpOnly/);
+    assert.match(setCookie[0], /SameSite=Lax/);
+    assert.match(setCookie[0], /Path=\/api\/v1\/auth/);
+    const cookie = setCookie[0].split(';', 1)[0];
+
+    const blocked = await request(app).post(`${api}/auth/refresh`).set('Cookie', cookie).send({});
+    assert.equal(blocked.status, 403, JSON.stringify(blocked.body));
+    assert.equal(blocked.body.error.code, 'CSRF_PROTECTION_REQUIRED');
+
+    const restored = await request(app).post(`${api}/auth/refresh`).set('Cookie', cookie).set('X-CSRF-Protection', '1').send({});
+    assert.equal(restored.status, 200, JSON.stringify(restored.body));
+    assert.ok(restored.body.accessToken);
+    const rotatedCookie = restored.headers['set-cookie'][0].split(';', 1)[0];
+    assert.notEqual(rotatedCookie, cookie);
+
+    const logout = await request(app).post(`${api}/auth/logout`).set('Cookie', rotatedCookie).set('X-CSRF-Protection', '1').send({});
+    assert.equal(logout.status, 204);
+    assert.match(logout.headers['set-cookie'][0], /Max-Age=0/);
+  });
+
   it('rotates refresh tokens and revokes the family on reuse', async () => {
     const rotation = await request(app).post(`${api}/auth/refresh`).send({ refreshToken: owner.session.refreshToken });
     assert.equal(rotation.status, 200, JSON.stringify(rotation.body));

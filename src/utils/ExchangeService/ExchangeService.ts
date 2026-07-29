@@ -87,7 +87,23 @@ export class ExchangeService implements IExchangeService {
   }
 
   async cancelAllOrders(symbol: string): Promise<void> {
-    return await this._ccxt.cancelAllOrders(symbol);
+    try {
+      await this._ccxt.cancelAllOrders(symbol);
+      return;
+    } catch (bulkCancelError) {
+      const openOrders = await this._ccxt.fetchOpenOrders(symbol).catch(() => {
+        throw bulkCancelError;
+      });
+      if (!openOrders.length) return;
+
+      await Promise.allSettled(openOrders.map((order) => this._ccxt.cancelOrder(order.id, symbol)));
+
+      const remainingOrders = await this._ccxt.fetchOpenOrders(symbol);
+      if (remainingOrders.length) {
+        const remainingIds = remainingOrders.map((order) => order.id).join(', ');
+        throw new Error(`Unable to cancel open orders for ${symbol}: ${remainingIds}`);
+      }
+    }
   }
 
   async createOrder({ symbol, type, side, amount, price, params }: CreateOpenPositionType): Promise<Order> {

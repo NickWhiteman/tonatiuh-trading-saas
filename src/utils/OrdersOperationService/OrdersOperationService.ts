@@ -19,6 +19,7 @@ import { IExchangeService } from 'interfaces';
 import { DatabaseService } from '../../utils/DatabaseService/DatabaseService';
 import { OrderService } from '../../utils/OrderService/OrderService';
 import { GetDatabaseList } from '../../plugins/FileSystemUtils/GetFileSystem/GetDatabaseList';
+import { calculateClosingOrderExposure } from './position-exposure';
 
 /**
  * @description OrdersOperationService implemets logics open positions for starting trading. And methods whitch for wrapper ExchangeService
@@ -277,24 +278,27 @@ export class OrdersOperationService implements IOrdersOperationService {
     await this.cancelAllOrders(symbol);
     if (!this.orders.length) return;
 
-    const entrySide = this.orders[0].side;
-    let netAmount = 0;
+    const filledOrders: Array<{ side: ModeType; filled: number }> = [];
     for (const order of this.orders) {
       const exchangeOrderId = order.orderId || String(order.id);
       const status = await this._ExchangeService.checkStatusOrderById(exchangeOrderId, symbol).catch(() => undefined);
       if (status) this._publishOrder(status);
-      const filled = Number(status?.filled ?? 0);
-      netAmount += order.side === entrySide ? filled : -filled;
+      filledOrders.push({
+        side: order.side,
+        filled: this._resolveExecutedAmount(order, status),
+      });
     }
 
-    if (netAmount <= 0) return;
-    const side: ModeType = entrySide === 'buy' ? 'sell' : 'buy';
+    const exposure = calculateClosingOrderExposure(filledOrders);
+    if (!exposure) return;
+
+    const { side, amount } = exposure;
     const price = await this._ExchangeService.getPrice(symbol);
     const submittedClosingOrder = await this._ExchangeService.createOrder({
       symbol,
-      type: 'market',
+      type: 'limit',
       side,
-      amount: netAmount,
+      amount,
       price,
     });
     this._publishOrder(submittedClosingOrder);
@@ -305,7 +309,7 @@ export class OrdersOperationService implements IOrdersOperationService {
         order: closingOrder,
         orderId: closingOrder.id,
         price: Number(closingOrder.average ?? closingOrder.price ?? price),
-        amount: Number(closingOrder.filled ?? closingOrder.amount ?? netAmount),
+        amount: Number(closingOrder.filled ?? closingOrder.amount ?? amount),
         side,
         symbol,
         indexOperation,
@@ -313,6 +317,23 @@ export class OrdersOperationService implements IOrdersOperationService {
     }
     this.orders.push(closingOrder);
     return closingOrder;
+  }
+
+  private _resolveExecutedAmount(order: OrderType, latest?: Order): number {
+    const latestFilled = Number(latest?.filled);
+    if (Number.isFinite(latestFilled) && latestFilled > 0) return latestFilled;
+
+    const latestAmount = Number(latest?.amount);
+    if (latest?.status === 'closed' && Number.isFinite(latestAmount) && latestAmount > 0) return latestAmount;
+
+    const rawOrder = order.order && typeof order.order === 'object' ? order.order : undefined;
+    const storedFilled = Number(rawOrder?.filled);
+    if (Number.isFinite(storedFilled) && storedFilled > 0) return storedFilled;
+
+    const storedAmount = Number(order.amount);
+    if (order.orderId && Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
+
+    return 0;
   }
 
   public async openPositionForStrategy({
