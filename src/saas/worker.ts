@@ -177,6 +177,7 @@ async function startBot(botId: string): Promise<void> {
     env: childEnvironment,
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   });
+  let childFailureMessage: string | undefined;
   processes.set(botId, child);
   child.send({ type: 'start', config });
   await saasQuery(
@@ -195,7 +196,10 @@ async function startBot(botId: string): Promise<void> {
       restartResetTimers.set(botId, resetTimer);
       void saasQuery("UPDATE trading_bots SET actual_state='RUNNING',heartbeat_at=now(),updated_at=now() WHERE id=$1 AND worker_instance_id=$2", [botId, instanceId]);
     }
-    if (message.type === 'error') void failBot(botId, message.message ?? 'Trading process failed.');
+    if (message.type === 'error') {
+      childFailureMessage = message.message ?? 'Trading process failed.';
+      void failBot(botId, childFailureMessage);
+    }
     if (message.type === 'order-update') queueOrderUpdate(botId, message);
     if (message.type === 'runtime-log') queueRuntimeLog(botId, message);
   });
@@ -206,7 +210,7 @@ async function startBot(botId: string): Promise<void> {
     if (resetTimer) clearTimeout(resetTimer);
     restartResetTimers.delete(botId);
     if (!stopping) {
-      void failBot(botId, `Trading process exited (code=${code}, signal=${signal}).`);
+      void failBot(botId, childFailureMessage ?? `Trading process exited (code=${code}, signal=${signal}).`);
       scheduleRestart(botId);
     }
   });

@@ -39,7 +39,9 @@ async function worker(nextConfig: ConfigType) {
       await trading.startAlgorithms(nextConfig);
     }
   } catch (err) {
-    process.send?.({ type: 'error', configId: nextConfig.id, message: String(err) });
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('Trading process failed:', error.stack ?? error.message);
+    process.send?.({ type: 'error', configId: nextConfig.id, message: error.stack ?? error.message });
     process.exit(1);
   }
 }
