@@ -312,6 +312,13 @@ async function handleCommand(command: BotCommand): Promise<void> {
 }
 
 async function reconcile(): Promise<void> {
+  await saasQuery(
+    `UPDATE trading_bots
+     SET actual_state='STOPPED',worker_instance_id=NULL,worker_pid=NULL,
+         heartbeat_at=now(),last_error=NULL,updated_at=now()
+     WHERE desired_state='STOPPED'
+       AND (actual_state<>'STOPPED' OR worker_instance_id IS NOT NULL OR worker_pid IS NOT NULL OR last_error IS NOT NULL)`,
+  );
   const desired = await saasQuery<{ id: string }>("SELECT id FROM trading_bots WHERE desired_state='RUNNING'");
   for (const bot of desired.rows) if (!processes.has(bot.id)) await startBot(bot.id).catch((error) => failBot(bot.id, String(error)));
 }
@@ -337,10 +344,15 @@ async function runLeader(client: PoolClient): Promise<void> {
 async function main(): Promise<void> {
   while (!stopping) {
     const client = await getSaasPool().connect();
+    const onClientError = (error: Error) => console.error('SaaS worker database connection error.', error);
+    client.on('error', onClientError);
     try {
       const result = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtext('tonatiuh-saas-worker-leader')) locked");
       if (result.rows[0].locked) await runLeader(client);
-    } finally { client.release(); }
+    } finally {
+      client.off('error', onClientError);
+      client.release();
+    }
     if (!stopping) await new Promise((resolve) => setTimeout(resolve, 5000));
   }
   await getSaasPool().end();
