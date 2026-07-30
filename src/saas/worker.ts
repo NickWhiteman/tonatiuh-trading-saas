@@ -11,7 +11,7 @@ import { setProcessDatabaseScope } from './db/access-context';
 
 setProcessDatabaseScope('worker');
 
-type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' };
+type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' | 'EMERGENCY_STOP' };
 type LifecycleMessage = { type: 'started' | 'error'; message?: string };
 type RuntimeLogMessage = {
   type: 'runtime-log'; level: 'INFO' | 'WARN' | 'ERROR'; message: string; occurredAt: string;
@@ -234,7 +234,7 @@ async function failBot(botId: string, message: string): Promise<void> {
   ).catch((error) => console.error('Failed to persist bot failure.', error));
 }
 
-async function stopBot(botId: string): Promise<void> {
+async function stopBot(botId: string, closePosition = false): Promise<void> {
   const child = processes.get(botId);
   processes.delete(botId);
   restartAttempts.delete(botId);
@@ -243,7 +243,7 @@ async function stopBot(botId: string): Promise<void> {
   restartResetTimers.delete(botId);
   let stoppedCleanly = true;
   if (child?.exitCode === null) {
-    child.send({ type: 'stop' });
+    child.send({ type: closePosition ? 'stop' : 'suspend' });
     stoppedCleanly = await new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
         if (child.exitCode === null) child.kill('SIGTERM');
@@ -255,8 +255,11 @@ async function stopBot(botId: string): Promise<void> {
   }
   if (!stoppedCleanly) {
     await flushRuntimeLogs(botId);
-    await failBot(botId, 'Trading process did not close its filled position cleanly before stopping.');
-    throw new Error('Trading process did not stop cleanly.');
+    const message = closePosition
+      ? 'Trading process did not close its filled position cleanly during emergency stop.'
+      : 'Trading process did not suspend cleanly.';
+    await failBot(botId, message);
+    throw new Error(message);
   }
   await flushRuntimeLogs(botId);
   await saasQuery(
@@ -300,11 +303,13 @@ async function claimCommand(): Promise<BotCommand | undefined> {
 
 async function handleCommand(command: BotCommand): Promise<void> {
   try {
-    const desiredState = command.command === 'STOP' ? 'STOPPED' : 'RUNNING';
+    const isStopping = command.command === 'STOP' || command.command === 'EMERGENCY_STOP';
+    const desiredState = isStopping ? 'STOPPED' : 'RUNNING';
     await saasQuery('UPDATE trading_bots SET desired_state=$2,updated_at=now() WHERE id=$1', [command.bot_id, desiredState]);
-    if (command.command === 'STOP') await stopBot(command.bot_id);
+    if (command.command === 'STOP') await stopBot(command.bot_id, false);
+    else if (command.command === 'EMERGENCY_STOP') await stopBot(command.bot_id, true);
     else {
-      if (command.command === 'RESTART') await stopBot(command.bot_id);
+      if (command.command === 'RESTART') await stopBot(command.bot_id, false);
       await startBot(command.bot_id);
     }
     await saasQuery("UPDATE bot_commands SET status='SUCCEEDED',processed_at=now() WHERE id=$1", [command.id]);
