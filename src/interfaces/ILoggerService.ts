@@ -1,6 +1,8 @@
 import { LoggerType } from 'types/types';
 
 export interface ILoggerService {
+  ready: () => Promise<void>;
+  close: () => Promise<void>;
   loggerStrategy: ({
     balance,
     price,

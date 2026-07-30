@@ -31,6 +31,7 @@ import { GenerateIdentity } from '../plugins/GenerateIdentity/GenerateIdentity';
 import { ConfigService } from '../utils/ConfigService/ConfigService';
 import { LoggerService } from '../utils/LoggerService/LoggerService';
 import { ENV } from '../plugins/Environment/const';
+import { optionalEnvConfig } from '../plugins/Environment/environment';
 import { OrdersCheckingService } from '../utils/OrdersCheckingsService/OrdersCheckingsService';
 import {
   calculateBuyBackAmount,
@@ -154,7 +155,12 @@ export abstract class AbstractTradingClass {
     this._OrdersOperationService = new OrdersOperationService(config);
     this._SessionTradingService = new SessionTradingService(config);
     this._OrdersCheckingService = new OrdersCheckingService(config);
-    this._LoggerService = new LoggerService(+ENV.PORT + config.id);
+    const configuredLoggerPort = optionalEnvConfig('TRADING_LOGGER_PORT');
+    const loggerPort = configuredLoggerPort === undefined ? +ENV.PORT + config.id : Number(configuredLoggerPort);
+    if (!Number.isInteger(loggerPort) || loggerPort < 0 || loggerPort > 65535) {
+      throw new Error('TRADING_LOGGER_PORT must be a valid port number.');
+    }
+    this._LoggerService = new LoggerService(loggerPort);
     this._loggerIdentity = `trading-service-${new GenerateIdentity(15).generateIdentity()}-${this._SYMBOL}`;
   }
 

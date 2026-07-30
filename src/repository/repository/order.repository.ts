@@ -16,12 +16,14 @@ export class OrderRepository extends AbstractRepository {
   ): Promise<number> {
     // if close buy position: sum(amount) * priceCloseOrder - sum(price * amount)
     // if close sell position: sum(price * amount) - sum(amount) * priceCloseOrder
+    const closingOrder = order[order.length - 1] as Order & { orderId?: string };
+    const closingOrderId = closingOrder.orderId ?? closingOrder.id;
     const priceResult = await this._selectQuery<{ price: number }>({
       tableName: this._tableName,
       column: ['price'],
       where: [
         { column: 'index_operation', value: indexSession },
-        { column: 'order_id', value: order[order.length - 1].id },
+        { column: 'order_id', value: closingOrderId },
       ],
       operationCondition: 'and',
     });

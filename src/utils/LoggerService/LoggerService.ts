@@ -7,11 +7,26 @@ import { pid } from 'process';
 export class LoggerService implements ILoggerService {
   private io: Server;
   private server: http.Server;
+  private listening: Promise<void>;
 
   constructor(port: number) {
     this.server = http.createServer();
-    this.server.listen(port, () => {
-      console.log(`Logger service listening on port ${port}`);
+    this.listening = new Promise<void>((resolve, reject) => {
+      const onError = (error: NodeJS.ErrnoException) => {
+        this.server.off('listening', onListening);
+        reject(new Error(`Logger service failed to listen on port ${port}: ${error.code ?? error.message}`));
+      };
+      const onListening = () => {
+        this.server.off('error', onError);
+        this.server.on('error', (error) => console.error('Logger service error:', error));
+        const address = this.server.address();
+        const listeningPort = address && typeof address === 'object' ? address.port : port;
+        console.log(`Logger service listening on port ${listeningPort}`);
+        resolve();
+      };
+      this.server.once('error', onError);
+      this.server.once('listening', onListening);
+      this.server.listen(port);
     });
 
     this.io = new Server(this.server, {
@@ -29,6 +44,22 @@ export class LoggerService implements ILoggerService {
       });
     });
     console.log('logger init');
+  }
+
+  public async ready(): Promise<void> {
+    await this.listening;
+  }
+
+  public async close(): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      this.io.close(() => {
+        if (!this.server.listening) {
+          resolve();
+          return;
+        }
+        this.server.close((error) => (error ? reject(error) : resolve()));
+      });
+    });
   }
 
   public async loggerStrategy({

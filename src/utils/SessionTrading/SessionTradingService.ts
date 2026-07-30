@@ -10,6 +10,7 @@ import { OrdersOperationService } from '../../utils/OrdersOperationService/Order
 import { BalanceService } from '../../utils/BalanceService/BalanceService';
 import { TradingSessionService } from '../../utils/TradeSessionService/TradingSessionService';
 import { GetDatabaseList } from '../../plugins/FileSystemUtils/GetFileSystem/GetDatabaseList';
+import { isSessionExposureClosed } from './session-reconciliation';
 
 export class SessionTradingService implements ISessionTradingService {
   private _exchange: string;
@@ -51,10 +52,16 @@ export class SessionTradingService implements ISessionTradingService {
     indexOperation = isActiveOldSession.indexSession;
 
     if (!orders?.length) {
+      await this.endTradeSession(0, indexOperation);
+      indexOperation = await this._SessionsService.startSession(this._config.id);
       return { typeSession: 'startNewTrade', indexOperation };
     }
 
-    await this._checkingIfClosingOrderHasBeenCreated(orders, indexOperation);
+    const completed = await this._checkingIfClosingOrderHasBeenCreated(orders, indexOperation);
+    if (completed) {
+      indexOperation = await this._SessionsService.startSession(this._config.id);
+      return { typeSession: 'startNewTrade', indexOperation };
+    }
     await this._OrdersOperationService.setOrders(orders);
     return { typeSession: 'startOldTrade', indexOperation };
   }
@@ -121,16 +128,18 @@ export class SessionTradingService implements ISessionTradingService {
   }
 
   // TODO: Необходим рефакторинг - утилитарный класс для подобного рода операций.
-  private async _checkingIfClosingOrderHasBeenCreated(orders: OrderType[], indexSession: string): Promise<void> {
-    for (const order of orders) {
-      if (orders[0].side !== order.side) {
-        const calculationProfit = await this.calculateProfitSession(indexSession, orders);
-        await this.saveBalanceState(calculationProfit, orders);
-        await this.endTradeSession(calculationProfit, indexSession);
-        await this._OrdersOperationService.revertActiveStateOrder(indexSession);
-        await this._OrdersOperationService.clearingOrderList();
-        throw new Error('The completed session was initialized!');
-      }
-    }
+  private async _checkingIfClosingOrderHasBeenCreated(
+    orders: OrderType[],
+    indexSession: string,
+  ): Promise<boolean> {
+    if (!isSessionExposureClosed(orders)) return false;
+
+    const calculationProfit = await this.calculateProfitSession(indexSession, orders);
+    await this.saveBalanceState(calculationProfit, orders);
+    await this.endTradeSession(calculationProfit, indexSession);
+    await this._OrdersOperationService.revertActiveStateOrder(indexSession);
+    await this._OrdersOperationService.clearingOrderList();
+    console.log(`Recovered completed trade session ${indexSession}.`);
+    return true;
   }
 }
