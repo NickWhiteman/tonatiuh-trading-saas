@@ -14,12 +14,15 @@ import { ENV } from '../../plugins/Environment/const';
 
 export class ExchangeService implements IExchangeService {
   private _ccxt: Exchange;
+  private _balanceCache?: { value: BalanceType; expiresAt: number };
 
   constructor(exchangeId: string, apiKey: string, privateKey: string, password: string) {
     this._ccxt = new ccxt[exchangeId]({
       apiKey: apiKey,
       secret: privateKey,
       password: password ?? '',
+      enableRateLimit: true,
+      timeout: 20_000,
     });
     this._ccxt.setSandboxMode(ENV.ENV_RELEASE === 'dev' ? true : false);
   }
@@ -29,7 +32,12 @@ export class ExchangeService implements IExchangeService {
   }
 
   async getBalance(): Promise<BalanceType> {
-    const balance = await this._ccxt.fetchBalance();
+    if (this._balanceCache && this._balanceCache.expiresAt > Date.now()) return this._balanceCache.value;
+    const balance = await this._readWithRetry<BalanceType>(
+      'fetchBalance',
+      () => this._ccxt.fetchBalance() as Promise<BalanceType>,
+    );
+    this._balanceCache = { value: balance, expiresAt: Date.now() + 10_000 };
     return balance;
   }
 
@@ -45,7 +53,7 @@ export class ExchangeService implements IExchangeService {
   }
 
   async getTick(symbol: string): Promise<TickType> {
-    const response: TickType = await this._ccxt.fetchTicker(symbol);
+    const response: TickType = await this._readWithRetry('fetchTicker', () => this._ccxt.fetchTicker(symbol));
     return response;
   }
 
@@ -82,8 +90,37 @@ export class ExchangeService implements IExchangeService {
   }
 
   async checkStatusOrderById(id: string, symbol: string): Promise<Order> {
-    const response: Order = await this._ccxt.fetchOrder(id, symbol);
+    const response: Order = await this._readWithRetry('fetchOrder', () => this._ccxt.fetchOrder(id, symbol));
     return response;
+  }
+
+  private async _readWithRetry<T>(operation: string, request: () => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        return await request();
+      } catch (error) {
+        lastError = error;
+        if (!this._isTransientExchangeError(error) || attempt === 5) throw error;
+        const delay = Math.min(1000 * 2 ** (attempt - 1), 10_000);
+        console.warn(`${operation} transient failure; retrying in ${delay}ms (${attempt}/5):`, error);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    throw lastError;
+  }
+
+  private _isTransientExchangeError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const transientNames = new Set([
+      'DDoSProtection',
+      'ExchangeNotAvailable',
+      'NetworkError',
+      'RateLimitExceeded',
+      'RequestTimeout',
+    ]);
+    const code = (error as NodeJS.ErrnoException).code;
+    return transientNames.has(error.name) || ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code ?? '');
   }
 
   async cancelAllOrders(symbol: string): Promise<void> {

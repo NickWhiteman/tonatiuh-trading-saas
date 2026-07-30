@@ -11,7 +11,7 @@ import { setProcessDatabaseScope } from './db/access-context';
 
 setProcessDatabaseScope('worker');
 
-type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' };
+type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' | 'EMERGENCY_STOP' };
 type LifecycleMessage = { type: 'started' | 'error'; message?: string };
 type RuntimeLogMessage = {
   type: 'runtime-log'; level: 'INFO' | 'WARN' | 'ERROR'; message: string; occurredAt: string;
@@ -30,6 +30,7 @@ type BotRow = {
 const instanceId = randomUUID();
 const processes = new Map<string, ChildProcess>();
 const restartAttempts = new Map<string, number>();
+const restartResetTimers = new Map<string, NodeJS.Timeout>();
 const orderWrites = new Map<string, Promise<void>>();
 const runtimeLogBuffers = new Map<string, RuntimeLogMessage[]>();
 const runtimeLogTimers = new Map<string, NodeJS.Timeout>();
@@ -97,8 +98,7 @@ async function persistOrderUpdate(botId: string, message: OrderUpdateMessage): P
 
 function queueOrderUpdate(botId: string, message: OrderUpdateMessage): void {
   const previous = orderWrites.get(botId) ?? Promise.resolve();
-  let next: Promise<void>;
-  next = previous
+  const next: Promise<void> = previous
     .catch(() => undefined)
     .then(() => persistOrderUpdate(botId, message))
     .catch((error) => console.error(`Failed to persist order update for bot ${botId}.`, error))
@@ -170,12 +170,14 @@ async function startBot(botId: string): Promise<void> {
   const childEnvironment: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
     ENCRYPTION_KEY_FILE: process.env.ENCRYPTION_KEY_FILE,
-    APP_MODE: 'desktop', ENV_RELEASE: bot.sandbox ? 'dev' : 'prod', TONATIUH_DATA_DIR: botDataDir, PORT: process.env.PORT ?? '3131',
+    APP_MODE: 'desktop', ENV_RELEASE: bot.sandbox ? 'dev' : 'prod', TONATIUH_DATA_DIR: botDataDir,
+    PORT: process.env.PORT ?? '3131', TRADING_LOGGER_PORT: '0',
   };
   const child = fork(entry, [], {
     env: childEnvironment,
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   });
+  let childFailureMessage: string | undefined;
   processes.set(botId, child);
   child.send({ type: 'start', config });
   await saasQuery(
@@ -184,18 +186,31 @@ async function startBot(botId: string): Promise<void> {
   );
   child.on('message', (message: LifecycleMessage | OrderUpdateMessage | RuntimeLogMessage) => {
     if (message.type === 'started') {
-      restartAttempts.delete(botId);
+      const previousTimer = restartResetTimers.get(botId);
+      if (previousTimer) clearTimeout(previousTimer);
+      const resetTimer = setTimeout(() => {
+        if (processes.get(botId) === child && child.exitCode === null) restartAttempts.delete(botId);
+        restartResetTimers.delete(botId);
+      }, 60_000);
+      resetTimer.unref();
+      restartResetTimers.set(botId, resetTimer);
       void saasQuery("UPDATE trading_bots SET actual_state='RUNNING',heartbeat_at=now(),updated_at=now() WHERE id=$1 AND worker_instance_id=$2", [botId, instanceId]);
     }
-    if (message.type === 'error') void failBot(botId, message.message ?? 'Trading process failed.');
+    if (message.type === 'error') {
+      childFailureMessage = message.message ?? 'Trading process failed.';
+      void failBot(botId, childFailureMessage);
+    }
     if (message.type === 'order-update') queueOrderUpdate(botId, message);
     if (message.type === 'runtime-log') queueRuntimeLog(botId, message);
   });
   child.once('exit', (code, signal) => {
     if (processes.get(botId) !== child) return;
     processes.delete(botId);
+    const resetTimer = restartResetTimers.get(botId);
+    if (resetTimer) clearTimeout(resetTimer);
+    restartResetTimers.delete(botId);
     if (!stopping) {
-      void failBot(botId, `Trading process exited (code=${code}, signal=${signal}).`);
+      void failBot(botId, childFailureMessage ?? `Trading process exited (code=${code}, signal=${signal}).`);
       scheduleRestart(botId);
     }
   });
@@ -219,13 +234,16 @@ async function failBot(botId: string, message: string): Promise<void> {
   ).catch((error) => console.error('Failed to persist bot failure.', error));
 }
 
-async function stopBot(botId: string): Promise<void> {
+async function stopBot(botId: string, closePosition = false): Promise<void> {
   const child = processes.get(botId);
   processes.delete(botId);
   restartAttempts.delete(botId);
+  const resetTimer = restartResetTimers.get(botId);
+  if (resetTimer) clearTimeout(resetTimer);
+  restartResetTimers.delete(botId);
   let stoppedCleanly = true;
   if (child?.exitCode === null) {
-    child.send({ type: 'stop' });
+    child.send({ type: closePosition ? 'stop' : 'suspend' });
     stoppedCleanly = await new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
         if (child.exitCode === null) child.kill('SIGTERM');
@@ -237,8 +255,11 @@ async function stopBot(botId: string): Promise<void> {
   }
   if (!stoppedCleanly) {
     await flushRuntimeLogs(botId);
-    await failBot(botId, 'Trading process did not close its filled position cleanly before stopping.');
-    throw new Error('Trading process did not stop cleanly.');
+    const message = closePosition
+      ? 'Trading process did not close its filled position cleanly during emergency stop.'
+      : 'Trading process did not suspend cleanly.';
+    await failBot(botId, message);
+    throw new Error(message);
   }
   await flushRuntimeLogs(botId);
   await saasQuery(
@@ -282,11 +303,13 @@ async function claimCommand(): Promise<BotCommand | undefined> {
 
 async function handleCommand(command: BotCommand): Promise<void> {
   try {
-    const desiredState = command.command === 'STOP' ? 'STOPPED' : 'RUNNING';
+    const isStopping = command.command === 'STOP' || command.command === 'EMERGENCY_STOP';
+    const desiredState = isStopping ? 'STOPPED' : 'RUNNING';
     await saasQuery('UPDATE trading_bots SET desired_state=$2,updated_at=now() WHERE id=$1', [command.bot_id, desiredState]);
-    if (command.command === 'STOP') await stopBot(command.bot_id);
+    if (command.command === 'STOP') await stopBot(command.bot_id, false);
+    else if (command.command === 'EMERGENCY_STOP') await stopBot(command.bot_id, true);
     else {
-      if (command.command === 'RESTART') await stopBot(command.bot_id);
+      if (command.command === 'RESTART') await stopBot(command.bot_id, false);
       await startBot(command.bot_id);
     }
     await saasQuery("UPDATE bot_commands SET status='SUCCEEDED',processed_at=now() WHERE id=$1", [command.id]);
@@ -298,6 +321,13 @@ async function handleCommand(command: BotCommand): Promise<void> {
 }
 
 async function reconcile(): Promise<void> {
+  await saasQuery(
+    `UPDATE trading_bots
+     SET actual_state='STOPPED',worker_instance_id=NULL,worker_pid=NULL,
+         heartbeat_at=now(),last_error=NULL,updated_at=now()
+     WHERE desired_state='STOPPED'
+       AND (actual_state<>'STOPPED' OR worker_instance_id IS NOT NULL OR worker_pid IS NOT NULL OR last_error IS NOT NULL)`,
+  );
   const desired = await saasQuery<{ id: string }>("SELECT id FROM trading_bots WHERE desired_state='RUNNING'");
   for (const bot of desired.rows) if (!processes.has(bot.id)) await startBot(bot.id).catch((error) => failBot(bot.id, String(error)));
 }
@@ -323,10 +353,15 @@ async function runLeader(client: PoolClient): Promise<void> {
 async function main(): Promise<void> {
   while (!stopping) {
     const client = await getSaasPool().connect();
+    const onClientError = (error: Error) => console.error('SaaS worker database connection error.', error);
+    client.on('error', onClientError);
     try {
       const result = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtext('tonatiuh-saas-worker-leader')) locked");
       if (result.rows[0].locked) await runLeader(client);
-    } finally { client.release(); }
+    } finally {
+      client.off('error', onClientError);
+      client.release();
+    }
     if (!stopping) await new Promise((resolve) => setTimeout(resolve, 5000));
   }
   await getSaasPool().end();

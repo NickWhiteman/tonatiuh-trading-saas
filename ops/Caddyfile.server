@@ -16,6 +16,9 @@
   handle /monitoring/* {
     reverse_proxy grafana:3000
   }
+  handle /api/* {
+    reverse_proxy api:3131
+  }
   handle {
     reverse_proxy web:80
   }

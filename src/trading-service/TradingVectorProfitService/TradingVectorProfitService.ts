@@ -4,6 +4,8 @@ import { WatchingTakeProfitLogicType } from '../../types/types';
 import { AbstractTradingClass } from '../abstract.trading';
 
 export class TradingVectorProfitService extends AbstractTradingClass implements ITrading {
+  private initialized = false;
+
   constructor() {
     super();
   }
@@ -11,13 +13,19 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
   /**
    * This method starting algorithm trading
    */
-  async startAlgorithms(config: ConfigType): Promise<void> {
+  async initialize(config: ConfigType): Promise<void> {
+    if (this.initialized) return;
     this._config = config;
     this._SYMBOL = config.symbol;
     await this._initGeneralUtils(config);
+    await this._LoggerService.ready();
     await this._ConfigService.recordLogger(this._loggerIdentity, this._config.id);
     console.log(`=> AbstractTradingClass initialized!`);
+    this.initialized = true;
+  }
 
+  async startAlgorithms(config: ConfigType): Promise<void> {
+    await this.initialize(config);
     await this._startTradingSession({
       typeTrading: 'one-trade',
       watchingTakeProfitLogic: async (param: WatchingTakeProfitLogicType) =>
@@ -61,5 +69,9 @@ export class TradingVectorProfitService extends AbstractTradingClass implements 
   async endAlgorithms(): Promise<void> {
     if (!this._OrdersOperationService || !this._SYMBOL) return;
     await this._OrdersOperationService.closeFilledPosition(this._SYMBOL, this._indexOperation);
+  }
+
+  async dispose(): Promise<void> {
+    if (this._LoggerService) await this._LoggerService.close();
   }
 }

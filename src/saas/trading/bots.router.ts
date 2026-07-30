@@ -45,7 +45,7 @@ const commandRoutes=[
   {path:'start',command:'START',audit:'BOT_START_REQUESTED'},
   {path:'stop',command:'STOP',audit:'BOT_STOP_REQUESTED'},
   {path:'restart',command:'RESTART',audit:'BOT_RESTART_REQUESTED'},
-  {path:'emergency-stop',command:'STOP',audit:'BOT_EMERGENCY_STOP_REQUESTED'},
+  {path:'emergency-stop',command:'EMERGENCY_STOP',audit:'BOT_EMERGENCY_STOP_REQUESTED'},
 ] as const;
 for(const {path,command,audit} of commandRoutes){botsRouter.post(`/:id/${path}`,
   requireRoles('OWNER','ADMIN','TRADER'),...(command==='STOP'?[]:[requireCurrentLegalConsent]),async(req,res,next)=>{try{
@@ -55,7 +55,7 @@ for(const {path,command,audit} of commandRoutes){botsRouter.post(`/:id/${path}`,
       'SELECT actual_state FROM trading_bots WHERE id=$1 AND organization_id=$2 FOR UPDATE',[botId,auth.organizationId])).rows[0];if(!bot)throw notFound('Bot was not found.');
       const inserted=(await client.query(`INSERT INTO bot_commands(organization_id,bot_id,command,idempotency_key,requested_by) VALUES($1,$2,$3,$4,$5)
         ON CONFLICT(organization_id,idempotency_key) DO NOTHING RETURNING *`,[auth.organizationId,botId,command,key,auth.userId])).rows[0];
-      if(inserted){if(command!=='STOP')await consumeBotCommand(client,auth.organizationId);const desired=command==='STOP'?'STOPPED':'RUNNING';const state=command==='STOP'?'STOPPING':'STARTING';
+      if(inserted){if(!['STOP','EMERGENCY_STOP'].includes(command))await consumeBotCommand(client,auth.organizationId);const stopping=['STOP','EMERGENCY_STOP'].includes(command);const desired=stopping?'STOPPED':'RUNNING';const state=stopping?'STOPPING':'STARTING';
         await client.query('UPDATE trading_bots SET desired_state=$3,actual_state=$4,updated_at=now() WHERE id=$1 AND organization_id=$2',[botId,auth.organizationId,desired,state]);return inserted;}
       const existing=(await client.query<{bot_id:string;command:string}>(
         'SELECT * FROM bot_commands WHERE organization_id=$1 AND idempotency_key=$2',[auth.organizationId,key])).rows[0];

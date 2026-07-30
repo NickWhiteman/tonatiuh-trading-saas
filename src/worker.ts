@@ -33,12 +33,15 @@ async function worker(nextConfig: ConfigType) {
   try {
     config = nextConfig;
     await new ConfigService().syncRuntimeConfig(nextConfig);
+    await trading.initialize(nextConfig);
     process.send?.({ type: 'started', configId: nextConfig.id, symbol: nextConfig.symbol });
     while (!isStopping) {
       await trading.startAlgorithms(nextConfig);
     }
   } catch (err) {
-    process.send?.({ type: 'error', configId: nextConfig.id, message: String(err) });
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('Trading process failed:', error.stack ?? error.message);
+    process.send?.({ type: 'error', configId: nextConfig.id, message: error.stack ?? error.message });
     process.exit(1);
   }
 }
@@ -49,6 +52,7 @@ async function stopWorker(closePosition: boolean) {
   isStopping = true;
   try {
     if (closePosition) await trading.endAlgorithms();
+    await trading.dispose();
     process.exit(0);
   } catch (error) {
     console.error('Failed to stop trading worker:', error);

@@ -11,5 +11,6 @@ test('browser refresh sessions use hardened host-only cookies and credentialed C
   assert.match(auth, /Path=\/api\/v1\/auth/);
   assert.match(auth, /X-CSRF-Protection/);
   assert.match(app, /credentials: true/);
+  assert.match(app, /methods: \[[^\]]*'PATCH'[^\]]*\]/);
   assert.match(app, /X-CSRF-Protection/);
 });
