@@ -41,6 +41,30 @@ botsRouter.patch('/:id',requireRoles('OWNER','ADMIN','TRADER'),requireCurrentLeg
     [id,auth.organizationId,optionalStringValue(body.name,'name',100),JSON.stringify(configuration)]);await writeAuditEvent(req,'BOT_UPDATED','bot',id);res.json(result.rows[0]);
 }catch(error){next(error);}});
 
+botsRouter.delete('/:id',requireRoles('OWNER','ADMIN','TRADER'),async(req,res,next)=>{try{
+  const auth=authContext(req);const botId=uuidValue(req.params.id,'id');const key=String(req.header('idempotency-key')??'').trim();
+  if(!/^[A-Za-z0-9._:-]{8,128}$/.test(key))throw new SaasHttpError(400,'IDEMPOTENCY_KEY_REQUIRED','A valid Idempotency-Key header is required.');
+  const result=await saasTransaction(async(client)=>{
+    const bot=(await client.query<{actual_state:string}>(
+      'SELECT actual_state FROM trading_bots WHERE id=$1 AND organization_id=$2 FOR UPDATE',[botId,auth.organizationId])).rows[0];
+    if(!bot)throw notFound('Bot was not found.');
+    if(!['STOPPED','FAILED'].includes(bot.actual_state))throw new SaasHttpError(409,'BOT_NOT_DELETABLE','Stop the bot before deleting it.');
+    const exposure=(await client.query<{open_quantity:string}>(
+      `SELECT COALESCE(SUM(CASE WHEN side='BUY' THEN quantity ELSE -quantity END),0)::text open_quantity
+       FROM orders WHERE bot_id=$1 AND organization_id=$2 AND status='FILLED'`,[botId,auth.organizationId])).rows[0];
+    if(Number(exposure?.open_quantity??0)!==0)throw new SaasHttpError(409,'BOT_HAS_OPEN_POSITION','Close the filled position before deleting the bot.');
+    const inserted=(await client.query(
+      `INSERT INTO bot_commands(organization_id,bot_id,command,idempotency_key,requested_by)
+       VALUES($1,$2,'DELETE',$3,$4) RETURNING *`,[auth.organizationId,botId,key,auth.userId])).rows[0];
+    await client.query(
+      `UPDATE trading_bots SET desired_state='STOPPED',actual_state='STOPPING',updated_at=now()
+       WHERE id=$1 AND organization_id=$2`,[botId,auth.organizationId]);
+    return inserted;
+  });
+  await writeAuditEvent(req,'BOT_DELETE_REQUESTED','bot',botId);res.status(202).json(result);
+}catch(error:unknown){const code=error&&typeof error==='object'&&'code'in error?error.code:undefined;
+  next(code==='23505'?new SaasHttpError(409,'IDEMPOTENCY_KEY_CONFLICT','Idempotency key was already used.'):error);}});
+
 const commandRoutes=[
   {path:'start',command:'START',audit:'BOT_START_REQUESTED'},
   {path:'stop',command:'STOP',audit:'BOT_STOP_REQUESTED'},

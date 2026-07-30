@@ -340,6 +340,13 @@ paths:
       responses:
         '200': {description: Stopped bot updated}
         default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [Bots]
+      operationId: deleteBot
+      parameters: [{$ref: '#/components/parameters/ResourceId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '202': {description: Bot and its isolated SQLite database scheduled for deletion}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/bots/{id}/start:
     post:
       tags: [Bots]

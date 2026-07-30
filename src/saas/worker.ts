@@ -1,6 +1,6 @@
 import { ChildProcess, fork } from 'child_process';
 import { randomUUID } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, readdir, rename, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { PoolClient } from 'pg';
 import { optionalEnvConfig } from '../plugins/Environment/environment';
@@ -11,7 +11,7 @@ import { setProcessDatabaseScope } from './db/access-context';
 
 setProcessDatabaseScope('worker');
 
-type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' | 'EMERGENCY_STOP' };
+type BotCommand = { id: string; bot_id: string; command: 'START' | 'STOP' | 'RESTART' | 'EMERGENCY_STOP' | 'DELETE' };
 type LifecycleMessage = { type: 'started' | 'error'; message?: string };
 type RuntimeLogMessage = {
   type: 'runtime-log'; level: 'INFO' | 'WARN' | 'ERROR'; message: string; occurredAt: string;
@@ -24,7 +24,7 @@ type OrderUpdateMessage = {
   };
 };
 type BotRow = {
-  id: string; exchange_code: string; credentials_ciphertext: string; configuration: Record<string, unknown>; sandbox: boolean;
+  id: string; organization_id: string; exchange_code: string; credentials_ciphertext: string; configuration: Record<string, unknown>; sandbox: boolean;
 };
 
 const instanceId = randomUUID();
@@ -73,11 +73,38 @@ function legacyConfig(bot: BotRow): ConfigType {
 
 async function loadBot(botId: string): Promise<BotRow> {
   const result = await saasQuery<BotRow>(
-    `SELECT b.id,b.configuration,e.exchange_code,e.credentials_ciphertext,e.sandbox FROM trading_bots b
+    `SELECT b.id,b.organization_id,b.configuration,e.exchange_code,e.credentials_ciphertext,e.sandbox FROM trading_bots b
      JOIN exchange_connections e ON e.id=b.exchange_connection_id WHERE b.id=$1 AND e.enabled=true`, [botId],
   );
   if (!result.rows[0]) throw new Error('Bot or enabled exchange connection was not found.');
   return result.rows[0];
+}
+
+const sqliteDatabaseName = 'trading.sqlite';
+const sqliteRelativePath = (botId: string): string => path.posix.join(botId, 'databases', sqliteDatabaseName);
+
+async function registerSqliteDatabase(botId: string): Promise<void> {
+  await saasQuery(
+    `INSERT INTO bot_sqlite_databases(organization_id,bot_id,database_name,relative_path)
+     SELECT organization_id,id,$2,$3 FROM trading_bots WHERE id=$1
+     ON CONFLICT(bot_id,database_name) DO UPDATE SET
+       organization_id=EXCLUDED.organization_id,relative_path=EXCLUDED.relative_path,
+       is_delete=0,deleted_at=NULL,updated_at=now()`,
+    [botId, sqliteDatabaseName, sqliteRelativePath(botId)],
+  );
+}
+
+async function registerExistingSqliteDatabases(): Promise<void> {
+  const entries = await readdir(dataRoot, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.name)) continue;
+    const databasePath = path.join(dataRoot, entry.name, 'databases', sqliteDatabaseName);
+    const exists = await access(databasePath).then(() => true).catch(() => false);
+    if (exists) await registerSqliteDatabase(entry.name);
+  }
 }
 
 async function persistOrderUpdate(botId: string, message: OrderUpdateMessage): Promise<void> {
@@ -165,7 +192,8 @@ async function startBot(botId: string): Promise<void> {
   const config = legacyConfig(bot);
   const botDataDir = path.join(dataRoot, botId);
   await mkdir(botDataDir, { recursive: true, mode: 0o700 });
-  await writeFile(path.join(botDataDir, 'database.list.json'), JSON.stringify({ 1: 'trading.sqlite' }), { mode: 0o600 });
+  await writeFile(path.join(botDataDir, 'database.list.json'), JSON.stringify({ 1: sqliteDatabaseName }), { mode: 0o600 });
+  await registerSqliteDatabase(botId);
   const entry = path.join(__dirname, '..', 'worker.js');
   const childEnvironment: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, NODE_ENV: process.env.NODE_ENV, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
@@ -290,6 +318,41 @@ async function suspendBot(botId: string): Promise<void> {
   );
 }
 
+async function deleteBot(botId: string): Promise<void> {
+  if (processes.get(botId)?.exitCode === null) await stopBot(botId, false);
+  const pendingOrderWrite = orderWrites.get(botId);
+  if (pendingOrderWrite) await pendingOrderWrite;
+  await flushRuntimeLogs(botId);
+  const databasePath = path.join(dataRoot, botId, 'databases', sqliteDatabaseName);
+  const databaseExists = await access(databasePath).then(() => true).catch(() => false);
+  if (databaseExists) await registerSqliteDatabase(botId);
+  const botDataDir = path.join(dataRoot, botId);
+  const stagedDataDir = `${botDataDir}.deleting-${randomUUID()}`;
+  let staged = false;
+  try {
+    await rename(botDataDir, stagedDataDir);
+    staged = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  try {
+    await saasTransaction(async (client) => {
+      await client.query(
+        `UPDATE bot_sqlite_databases SET is_delete=1,deleted_at=now(),updated_at=now()
+         WHERE bot_id=$1 AND is_delete=0`, [botId],
+      );
+      await client.query('DELETE FROM orders WHERE bot_id=$1', [botId]);
+      await client.query('DELETE FROM trading_sessions WHERE bot_id=$1', [botId]);
+      await client.query('DELETE FROM trading_bots WHERE id=$1', [botId]);
+    });
+  } catch (error) {
+    if (staged) await rename(stagedDataDir, botDataDir).catch(() => undefined);
+    throw error;
+  }
+  if (staged) await rm(stagedDataDir, { recursive: true, force: true })
+    .catch((error) => console.error(`Failed to remove staged SQLite data for bot ${botId}.`, error));
+}
+
 async function claimCommand(): Promise<BotCommand | undefined> {
   return saasTransaction(async (client) => {
     const result = await client.query<BotCommand>(
@@ -303,10 +366,11 @@ async function claimCommand(): Promise<BotCommand | undefined> {
 
 async function handleCommand(command: BotCommand): Promise<void> {
   try {
-    const isStopping = command.command === 'STOP' || command.command === 'EMERGENCY_STOP';
+    const isStopping = command.command === 'STOP' || command.command === 'EMERGENCY_STOP' || command.command === 'DELETE';
     const desiredState = isStopping ? 'STOPPED' : 'RUNNING';
     await saasQuery('UPDATE trading_bots SET desired_state=$2,updated_at=now() WHERE id=$1', [command.bot_id, desiredState]);
-    if (command.command === 'STOP') await stopBot(command.bot_id, false);
+    if (command.command === 'DELETE') await deleteBot(command.bot_id);
+    else if (command.command === 'STOP') await stopBot(command.bot_id, false);
     else if (command.command === 'EMERGENCY_STOP') await stopBot(command.bot_id, true);
     else {
       if (command.command === 'RESTART') await stopBot(command.bot_id, false);
@@ -334,6 +398,7 @@ async function reconcile(): Promise<void> {
 
 async function runLeader(client: PoolClient): Promise<void> {
   console.log(`SaaS worker leader started: ${instanceId}`);
+  await registerExistingSqliteDatabases();
   await reconcile();
   while (!stopping) {
     const command = await claimCommand();
