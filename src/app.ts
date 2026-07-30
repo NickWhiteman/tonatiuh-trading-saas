@@ -21,6 +21,7 @@ export function createApp(mountAdditionalRoutes?: (app: Express) => void): Expre
   app.use(cors({
     origin: localCorsOrigin,
     credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id', 'X-CSRF-Protection'],
     exposedHeaders: ['Deprecation','Sunset','Link','X-Request-Id','Retry-After'],
   }));
